@@ -44,3 +44,7 @@ typings/
 # Mac files
 .DS_STORE
 # we only use yarn lock
+# Local integration snapshots and browser QA output
+.local/
+.playwright-cli/
+output/

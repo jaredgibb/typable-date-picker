@@ -1,15 +1,27 @@
 {
-  "name": "ww-date-time-picker",
-  "version": "0.0.1",
+  "name": "ww-typable-date-picker",
+  "version": "0.1.0",
   "scripts": {
-    "build": "weweb build",
-    "serve": "weweb serve"
+    "build": "weweb build --name=typable-date-picker --type=wwobject",
+    "serve": "weweb serve",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "demo": "vite --host 127.0.0.1"
   },
   "devDependencies": {
-    "@weweb/cli": "latest"
+    "@vitejs/plugin-vue": "5.2.4",
+    "@vue/test-utils": "2.4.6",
+    "@weweb/cli": "3.8.16",
+    "jsdom": "26.1.0",
+    "sass": "1.93.2",
+    "vite": "6.4.3",
+    "vitest": "3.2.7",
+    "vue": "3.5.22"
   },
   "dependencies": {
     "@vuepic/vue-datepicker": "3.6.8",
     "date-fns": "4.1.0"
-  }
+  },
+  "description": "WeWeb date/time picker with optional strict 24-hour time typing",
+  "private": true
 }

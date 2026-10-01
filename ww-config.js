@@ -1,7 +1,7 @@
 export default {
   editor: {
     label: {
-      en: "Date picker",
+      en: "Typable date / time picker",
     },
     icon: "calendar",
     bubble: {
@@ -34,6 +34,8 @@ export default {
           "themeFontFamily",
           "themeFontSize",
           "themeTimeFontSize",
+          "inputHeight",
+          "inputFocusColor",
   
           "advancedStyles",
           "themePreviewFontSize",
@@ -101,7 +103,7 @@ export default {
       {
         label: "Time",
         isCollapsible: true,
-        properties: ["dateMode", "timezone", "use24", "enableSeconds"],
+        properties: ["dateMode", "timezone", "use24", "enableSeconds", "allowTyping", "inputLabel", "inputPlaceholder", "clockButtonLabel"],
       },
       {
         label: "Dates",
@@ -137,6 +139,9 @@ export default {
     ],
   },
   triggerEvents: [
+    { name: "input", label: { en: "On text input" }, event: { text: "14:30", valid: true, value: null, hasUncommittedInput: true } },
+    { name: "open", label: { en: "On picker open" }, event: {} },
+    { name: "close", label: { en: "On picker close" }, event: {} },
     {
       name: "change",
       label: { en: "On change" },
@@ -154,6 +159,9 @@ export default {
     },
   ],
   actions: [
+    { label: "Commit typed input", action: "commitInput" },
+    { label: "Get input state", action: "getInputState" },
+    { label: "Reset text to committed value", action: "resetInput" },
     {
       label: "Clear",
       action: "clearValue",
@@ -168,6 +176,32 @@ export default {
     },
   ],
   properties: {
+    allowTyping: {
+      label: { en: "Allow typing" }, type: "OnOff", section: "settings", defaultValue: false, bindable: true,
+      hidden: (content) => content.dateMode !== "time" || content.selectionMode !== "single" || !content.use24 || content.enableSeconds || content.enableCalendarOnly,
+      propertyHelp: { tooltip: "Strict HH:mm typing for single-value, 24-hour time without seconds. Commit on Enter, Tab, or leaving the field. Save workflows must check inputValid and run Commit typed input before reading value." },
+    },
+    inputLabel: {
+      label: { en: "Input label" }, type: "Text", section: "settings", defaultValue: "", bindable: true,
+      hidden: (content) => !content.allowTyping,
+      propertyHelp: { tooltip: "Visible associated label. When empty, an associated Time label remains available to screen readers." },
+    },
+    inputPlaceholder: {
+      label: { en: "Input placeholder" }, type: "Text", section: "settings", defaultValue: "HH:mm", bindable: true,
+      hidden: (content) => !content.allowTyping,
+    },
+    clockButtonLabel: {
+      label: { en: "Clock button accessible name" }, type: "Text", section: "settings", defaultValue: "Open time picker", bindable: true,
+      hidden: (content) => !content.allowTyping,
+    },
+    inputHeight: {
+      ...generateThemeSizingConfig("Input minimum height", 40, 200, false),
+      hidden: (content) => !content.allowTyping,
+    },
+    inputFocusColor: {
+      ...generateThemeColorConfig("Input focus color", "#D4DFDE", false),
+      hidden: (content) => !content.allowTyping,
+    },
     initValueSingle: {
       label: {
         en: "Init value",
