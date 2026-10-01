@@ -6,6 +6,8 @@ Segmented date/time entry with flexible WeWeb styling and an enforced 24-hour op
 
 Use the public repository [jaredgibb/typable-date-picker](https://github.com/jaredgibb/typable-date-picker), branch **main**, release tag **v0.2.1**. Follow WeWeb's [source-code import workflow](https://developer.weweb.io/development-process.html). For an existing import, build/select the updated source version in the WeWeb dashboard, then refresh the editor.
 
+A separately copied or forked WeWeb component has its own source/version history. Updating the GitHub import does not update that copy. CIT's `cit-native-date-time-picker` copy was updated separately to the same `0.2.1` runtime on October 1; see [CIT source verification](docs/verification.md#cit-component-source-update).
+
 Configure each field:
 
 - Selection: **Single**

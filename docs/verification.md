@@ -16,6 +16,14 @@ Same local macOS/Node environment, unpublished standalone Vue harness, synthetic
 
 Ignored local evidence: `output/playwright/time24-replay-result.txt`, `native-021-regression.txt`, `time24-popup.png`, `time24-desktop.png`, and `time24-mobile.png`. Component evidence does not establish authenticated CIT acceptance. Build and GitHub delivery results are reported with the release.
 
+## CIT component source update
+
+Named environment: **CIT Project / Forms / unpublished editor**, October 1, 2026. MCP inspection of **Incident Arrival Time** (`9cad6a23-4e6e-40ba-bbe0-f62d2d9dc8e1`) confirmed `use24=true`, Allow typing on, Single/Time, and seconds off. The element used the editable `cit-native-date-time-picker` copy, whose active package/source was still `0.2.0` and always rendered a native time input for typing. The separate GitHub import already contained `0.2.1`.
+
+Updated the existing copy in place using the tested runtime from commit `20cf1a33d6a16dda6572ed78749a73e278ee814d`, retaining its package/tag identity. WeWeb's component build succeeded. The active source version `1c363b29-2b1d-487b-8e9a-c714e079ed4e` read back as package `0.2.1`, with all ten source files exactly matching the submitted bundle. The complete Arrival element configuration and its existing checkpoint workflow compared equal before/after. The vendored library/CSS and native/time adapters also matched the original copy. `npm test` was rerun: **97 tests pass**.
+
+The original source and update evidence remain in ignored `.local/cit-native-original-2026-10-01.json` and `.local/cit-native-release-021-evidence.json`. The verification browser reached the authenticated WeWeb editor, but Forms redirected to the app's Login page; the existing Chrome tab connection timed out. This verifies source delivery/configuration preservation, not the rendered field or authenticated form behavior. Refresh/replay in an authenticated app session remains required. No Xano request changes or application publication occurred.
+
 ## v0.2.0 native segmented controls
 
 Environment: local `jaredgibb/typable-date-picker`, macOS, Node.js 20.19.4, unpublished standalone harness at `http://127.0.0.1:5177/`. Headed Chromium replay used the browser's US display and America/Detroit local timezone, synthetic values, and no backend requests.

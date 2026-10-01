@@ -2,7 +2,7 @@
 
 ## Delivery boundary
 
-This repository delivers the custom WeWeb component. The Forms test instance was enabled for the earlier typing version; the four production form controls, existing checkpoint workflows, Xano request actions, and published application were not replaced. v0.2.1 delivers native controls and configurable styling through GitHub. Component tests and the standalone browser replay do not establish authenticated CIT acceptance.
+This repository delivers the custom WeWeb component. The initial delivery enabled a Forms test instance without replacing the four production controls. On October 1, live MCP inspection found Incident Arrival time using a separate `cit-native-date-time-picker` copy with the older `0.2.0` source. That existing component was updated in place to the tested `0.2.1` runtime; the Arrival element's configuration and checkpoint binding remained unchanged. Xano request actions and the published application were not changed. Component tests and the standalone browser replay do not establish authenticated CIT acceptance.
 
 ## Recorded baseline
 
@@ -51,6 +51,10 @@ Named environment: **CIT Project**, project `831c9c16-b71b-4d6f-9bbd-38e457a8118
 
 v0.2.1 local evidence: 97 tests, a passing WeWeb build, and 65 headed Chromium assertions across native and forced 24-hour modes; see [verification.md](verification.md). The previous v0.1.0 source and private original-instance snapshot remain available for rollback. Keep original element IDs/configuration until authenticated acceptance passes.
 
+October 1 follow-up: **Incident Arrival Time**, element `9cad6a23-4e6e-40ba-bbe0-f62d2d9dc8e1`, uses `cit-native-date-time-picker`, base `1ef38136-3fa1-4033-83ec-eda0c85e3441`. Before the update, its package was `0.2.0` even though `use24`, `allowTyping`, Single/Time, and no seconds were configured correctly. The editable WeWeb copy had not received the GitHub fix. Its new active source version is `1c363b29-2b1d-487b-8e9a-c714e079ed4e`, package `0.2.1`; the build succeeded and every returned source file matched the submitted bundle. The element's complete configuration, hydration formula, slots, styling, and change/checkpoint workflow were identical before and after. The private original component source was retained in `.local/cit-native-original-2026-10-01.json`.
+
+The verification browser redirected Forms to Login; the connection to the existing Chrome session timed out. Rendered Arrival time and authenticated persistence acceptance therefore remain unverified. Refresh the editor to load the corrected active component source before replaying.
+
 ## Acceptance evidence still required
 
 Record the named unpublished environment, editor revision, user role, test input, expected result, and actual result for:
@@ -61,4 +65,4 @@ Record the named unpublished environment, editor revision, user role, test input
 - Rapid edits, autosave, Save before blur, draft resume, direct editing, Cancel, Discard, and successful Submit.
 - Desktop/mobile layout and authenticated role access.
 
-After the editor replay, update CIT's existing frontend notes, form/draft contract, acceptance criteria, and implementation-status pages with actual evidence. Until that replay passes, status is **component delivered; CIT integration and authenticated acceptance pending**.
+After the editor replay, update CIT's existing frontend notes, form/draft contract, acceptance criteria, and implementation-status pages with actual evidence. Until that replay passes, status is **component delivered and CIT copy updated; authenticated integration acceptance pending**.
