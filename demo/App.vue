@@ -16,13 +16,14 @@ const events = ref([]);
 const checkpoints = ref([]);
 const readonly = ref(false);
 const alternateStyle = ref(false);
+const use24 = ref(false);
 const defaults = Object.fromEntries(Object.entries(config.properties).map(([name, property]) => [name, property.defaultValue]));
 const initial = ref({});
 const values = ref(Object.fromEntries(fields.map(field => [field.key, null])));
 const pairs = computed(() => incidentPairs(values.value));
 function content(field) {
   const error = field.key.startsWith("arrival") ? pairs.value.arrival.error : pairs.value.orderingError || pairs.value.clear.error;
-  return { ...defaults, dateMode: field.mode, selectionMode: "single", allowTyping: true,
+  return { ...defaults, dateMode: field.mode, selectionMode: "single", allowTyping: true, use24: use24.value,
     readonly: readonly.value, required: true, initValueSingle: initial.value[field.key] ?? null,
     inputLabel: field.label, inputErrorMessage: error,
     themeFontFamily: "Arial, sans-serif", themeFontSize: alternateStyle.value ? "16px" : "12px",
@@ -64,8 +65,8 @@ async function cancel() {
 
 <template>
   <main>
-    <h1>Native segments. Flexible styles.</h1>
-    <p>Enter date/time segments without typing separators. The browser provides the calendar and clock pickers.</p>
+    <h1>Editable segments. Flexible styles.</h1>
+    <p>Enter date/time segments without typing separators. Use browser pickers, or enable 24-hour time to enforce HH:mm in the field and picker.</p>
     <form novalidate @submit.prevent="formSubmits++">
       <div class="fields">
         <Element v-for="field in fields" :key="field.key" :ref="control => { if (control) controls[field.key] = control; }" :content="content(field)" :uid="field.key" :ww-element-state="{ props: {}, states: [] }" :ww-editor-state="{ editMode: 'preview' }" @trigger-event="onEvent(field, $event)" />
@@ -78,6 +79,7 @@ async function cancel() {
         <button type="button" @click="cancel" @mousedown.prevent>Cancel pending edits</button>
         <button type="button" @click="reset">Reset</button>
       </div>
+      <label class="switch"><input type="checkbox" v-model="use24">24-hour time</label>
       <label class="switch"><input type="checkbox" v-model="readonly">Read only</label>
       <label class="switch"><input type="checkbox" v-model="alternateStyle">Try alternate styling</label>
     </form>

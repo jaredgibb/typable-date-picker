@@ -1,5 +1,21 @@
 # Component verification — October 1, 2026
 
+## v0.2.1 — honor the 24-hour display setting
+
+Same local macOS/Node environment, unpublished standalone Vue harness, synthetic values and no backend requests. With Allow typing enabled, `use24=true` now renders controlled hour/minute segments and uses the unchanged library's 24-hour popup. Native date controls and `use24=false` time controls retain the v0.2.0 path.
+
+- `npm run build`: **passes** using the WeWeb `wwobject` production compiler.
+- `npm test`: **97 cases pass** across five suites (48 wrapper cases, 24 native helpers, 17 retained time adapters, 6 pair examples, 2 segment helpers).
+- Headed Chromium: **35 forced 24-hour assertions pass**, and all **30 native assertions pass again** after the change.
+- Actual enforced display: typing `1430` produces `14:30`, and the popup shows hour/minute controls with no AM/PM selector. Enter and Save before blur commit `14:30:00` once.
+- `25:30`, `14:75`, and a missing segment remain visible/invalid and block Save without overwriting the previous time. Configured brown border and peach background were confirmed through computed styles.
+- Clearing both segments commits `null`; midnight commits `00:00:00`; arrows, Tab, Cancel, hydration, read-only, and switching modes preserve the expected contract.
+- Pending `16:45` seeds the picker without a checkpoint; selecting `21:34` updates both segments and the same value/change event once. Confirmation restores segment focus. Escape restores focus and preserves the pending edit without committing it.
+- Existing styles remain configurable: `52px` height, `16px` text, and `14px` radius were verified. Desktop and 390px mobile fields have no horizontal overflow; the 24-hour popup fits the mobile viewport.
+- Vendored picker JavaScript/CSS remain unchanged. Its known development teleport/dpStyle warnings still occur on the library path; the replay completed with no browser errors.
+
+Ignored local evidence: `output/playwright/time24-replay-result.txt`, `native-021-regression.txt`, `time24-popup.png`, `time24-desktop.png`, and `time24-mobile.png`. Component evidence does not establish authenticated CIT acceptance. Build and GitHub delivery results are reported with the release.
+
 ## v0.2.0 native segmented controls
 
 Environment: local `jaredgibb/typable-date-picker`, macOS, Node.js 20.19.4, unpublished standalone harness at `http://127.0.0.1:5177/`. Headed Chromium replay used the browser's US display and America/Detroit local timezone, synthetic values, and no backend requests.

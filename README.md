@@ -1,24 +1,25 @@
 # Typable date / time picker for WeWeb
 
-Native segmented date/time entry with flexible WeWeb styling. Users edit the date or time segments without typing `/` or `:`. The browser supplies the calendar/clock indicator and picker; typing and picker selection update the same committed `value` and `change` event.
+Segmented date/time entry with flexible WeWeb styling and an enforced 24-hour option. Users edit the date or time segments without typing `/` or `:`. Dates and default time mode use browser controls. Enabling **24h mode** uses explicit hour/minute segments and the retained 24-hour library picker. Both paths update the same committed `value` and `change` event.
 
 ## Import or update in WeWeb
 
-Use the public repository [jaredgibb/typable-date-picker](https://github.com/jaredgibb/typable-date-picker), branch **main**, release tag **v0.2.0**. Follow WeWeb's [source-code import workflow](https://developer.weweb.io/development-process.html). For an existing import, build/select the updated source version in the WeWeb dashboard, then refresh the editor.
+Use the public repository [jaredgibb/typable-date-picker](https://github.com/jaredgibb/typable-date-picker), branch **main**, release tag **v0.2.1**. Follow WeWeb's [source-code import workflow](https://developer.weweb.io/development-process.html). For an existing import, build/select the updated source version in the WeWeb dashboard, then refresh the editor.
 
 Configure each field:
 
 - Selection: **Single**
 - Mode: **Date** or **Time**
 - Allow typing: **On**
+- 24h mode: **On** for guaranteed `HH:mm` entry and picker display; **Off** for native browser time formatting
 - Seconds and inline/calendar-only mode: **Off** for time
 - Input label: **Arrival date**, **Arrival time**, **Clear date**, or **Clear time**
 
-**Allow typing defaults to off.** When off, or in datetime/range/multiple/month/year/seconds/inline modes, the original picker and trigger/action slots remain available. Native mode replaces v0.1's free-text field and library popup with `<input type="date">` or `<input type="time" step="60">`. The original vendored library is retained unchanged for the fallback.
+**Allow typing defaults to off.** When off, or in datetime/range/multiple/month/year/seconds/inline modes, the original picker and trigger/action slots remain available. Date mode uses `<input type="date">`. Time with 24h mode off uses `<input type="time" step="60">`. Time with 24h mode on uses separately editable hour/minute inputs, a permanent colon, and the existing library's 24-hour popup and **Select time** button. The vendored library remains unchanged.
 
 ## Display and keyboard behavior
 
-These examples match the verified Chromium browser's US display. Formatting, segment order, icons, popups, and mobile presentation depend on the browser/OS locale. `format`, `customFormat`, and `use24` affect the library fallback; they cannot force a particular native display format. Native time values remain 24-hour even when the field displays AM/PM. See [native date values](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/date) and [native time values](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/time).
+These native-mode examples match the verified Chromium browser's US display. Native formatting, segment order, icons, popups, and mobile presentation depend on the browser/OS locale. `format` and `customFormat` apply to the library fallback. **24h mode (`use24`) now controls the visible time field and picker** by selecting the explicit 24-hour path, because native HTML has no reliable per-field 12/24-hour display override. Native time values remain 24-hour even when the field displays AM/PM. See [native date values](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/date) and [native time values](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/time).
 
 | State | Date display | Time display |
 | --- | --- | --- |
@@ -26,9 +27,13 @@ These examples match the verified Chromium browser's US display. Formatting, seg
 | Partial | `10/01/yyyy` | `09:-- --` |
 | Complete | `10/01/2026` | `09:34 PM` |
 
+With **24h mode on**, empty time is `--:--`, a partial value can be `14:--`, and a complete value is `14:30` or `21:34`. There is no AM/PM segment in either the field or popup. Typing `1430` fills hours then minutes without a colon; typing `9` completes `09` and advances to minutes. Valid single-digit segments are zero-padded on explicit commit; invalid `25:30`, `14:75`, and missing segments remain visibly invalid. Arrow keys navigate/adjust segments, Tab advances normally, and Backspace/Delete clears a segment. Pasting `14:30` or `1430` into either segment fills the pair.
+
 The native control provides separately editable month/day/year or hour/minute/AM–PM segments, selected-segment highlighting, digit replacement, automatic advancement, and separators. In the verified browser, typing `10`, `01`, `2026` completes the date; `9`, `34`, `p` produces `09:34 PM` (`21:34`). `a` selects AM. Left/Right moves between segments, Up/Down adjusts the selected segment, Tab/Shift+Tab navigates normally, and Delete/Backspace can clear one segment while retaining the others.
 
-Keyboard edits commit on **Enter, Tab, leaving the field, or Commit typed input**. Enter in the input does not submit the form. Intermediate year digits do not create committed checkpoints. Native picker confirmation uses the same handler, and duplicate change/blur/Enter notifications do not emit duplicate `change` events. Escape dismisses a native popup using browser behavior; native date/time popup dismissal and retained focus were verified locally. Read-only prevents editing and programmatic picker opening.
+Keyboard edits commit on **Enter, Tab, leaving the field, or Commit typed input**. Enter in the input does not submit the form. Intermediate year digits do not create committed checkpoints. Native picker confirmation and the 24-hour library's **Select time** confirmation use the same handler, and duplicate change/blur/Enter notifications do not emit duplicate `change` events. Escape dismisses a native popup using browser behavior; native date/time popup dismissal and retained focus were verified locally. In 24-hour mode, Escape closes the library popup, returns focus to the segment, and preserves pending edits without a checkpoint. Read-only prevents editing and programmatic picker opening.
+
+Switching 24h mode restores the committed value in the selected input mode without changing it or emitting a checkpoint. Avoid toggling the display mode while an uncommitted edit is in progress.
 
 The label remains across the top border when empty, focused, or filled. Required fields show a small `*`. Native calendar/clock indicators remain visible in the verified browser's empty and complete states.
 
@@ -58,11 +63,11 @@ Before reading values or recombining timestamps:
 | Component variable | Meaning |
 | --- | --- |
 | `value` | Existing committed selection |
-| `inputText` | Serialized native value; partial visible segments may yield an empty string |
+| `inputText` | Native serialized value, or the explicit 24-hour segment text; partial native segments may yield an empty string |
 | `inputValid` | Latest edit syntax/constraint validity |
 | `hasUncommittedInput` | A pending edit needs committing or correcting |
 
-Use **On change** for committed checkpoints. **On input** reports editing/validity state and must not enqueue canonical timestamp checkpoints. Native popups have no standard open/close events; the existing **On picker open / close** events apply to the library fallback. **Open Menu** uses native `showPicker()` when browser permission and user activation allow it; users can always use the native indicator where supported. **Close Menu** blurs the native field; Escape remains browser-controlled.
+Use **On change** for committed checkpoints. **On input** reports editing/validity state and must not enqueue canonical timestamp checkpoints. Native popups have no standard open/close events; **On picker open / close** events apply to the library fallback and the forced 24-hour popup. In forced 24-hour mode, **Open Menu / Close Menu** control the library popup. In native mode, **Open Menu** uses `showPicker()` when browser permission and user activation allow it; users can always use the native indicator where supported. **Close Menu** blurs the native field; Escape remains browser-controlled.
 
 Native dates use the configured min/max values. Allowed/disabled dates and weekdays are checked after entry/selection; native calendar cells cannot represent arbitrary library-specific restrictions. Native popups use browser styling.
 
@@ -103,7 +108,7 @@ npm run build
 npm run demo
 ```
 
-The demo renders both pairs, persistent labels, read-only mode, and an alternate style. GitHub Actions checks tests and the WeWeb `wwobject` production build. October 1, 2026 local verification: **78 tests pass**, **30 native Chromium replay checks pass**, and desktop/390px mobile layouts render correctly. See [actual verification evidence](docs/verification.md) for the build result and acceptance boundary.
+The demo renders both pairs, a 24-hour toggle, persistent labels, read-only mode, and an alternate style. GitHub Actions checks tests and the WeWeb `wwobject` production build. October 1, 2026 local verification: **97 tests pass**, **30 native and 35 forced 24-hour Chromium replay checks pass**, and desktop/390px mobile layouts render correctly. See [actual verification evidence](docs/verification.md) for the build result and acceptance boundary.
 
 This delivers the component source. The updated version still needs to be selected in WeWeb and replayed in the authenticated CIT form before calling the four-control integration accepted. Existing Xano request actions remain Jared's responsibility; application publication is separate.
 
@@ -111,6 +116,6 @@ This delivers the component source. The updated version still needs to be select
 
 Based on [weweb-assets/ww-input-date-time-picker at `1ec958b77b75b5d48a75fe3de3ab87bb972c4983`](https://github.com/weweb-assets/ww-input-date-time-picker/tree/1ec958b77b75b5d48a75fe3de3ab87bb972c4983). Vendored `src/vue-datepicker.js` and `src/main.css` remain unchanged at picker version 3.6.8. Upstream Git history is retained.
 
-Disable **Allow typing** for the original library path, or select the retained **v0.1.0** Git tag to restore the previous free-text typing version. Keep original element configurations and ID bindings until project acceptance passes. Private local CIT rollback snapshots and synthetic browser artifacts are excluded from this public repository.
+Disable **Allow typing** for the original library path, or select retained **v0.2.0** for native-only typing regardless of use24, or **v0.1.0** to restore the previous free-text typing version. Keep original element configurations and ID bindings until project acceptance passes. Private local CIT rollback snapshots and synthetic browser artifacts are excluded from this public repository.
 
 The upstream CSS source-map warning and inherited build-tool npm audit advisories remain recorded maintenance items; no picker/tooling upgrades were made for this feature.

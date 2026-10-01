@@ -1,6 +1,6 @@
 <template>
   <div class="ww-typable-date-picker">
-    <div v-if="canType" class="native-field" :class="{ 'native-invalid': !inputValid || content.inputErrorMessage }" :style="typingStyle">
+    <div v-if="canType && !uses24HourSegments" class="native-field" :class="{ 'native-invalid': !inputValid || content.inputErrorMessage }" :style="typingStyle">
       <label :for="inputId" class="native-label">{{ content.inputLabel || (content.dateMode === 'date' ? 'Date' : 'Time') }}<span v-if="content.required" class="native-required" aria-hidden="true"> *</span></label>
       <input ref="nativeInput" :id="inputId" class="native-control"
         :type="content.dateMode" :step="content.dateMode === 'time' ? 60 : 1"
@@ -55,7 +55,7 @@
       "
       :enable-seconds="content.enableSeconds"
       :is-24="content.use24"
-      :autoApply="content.autoApply"
+      :autoApply="uses24HourSegments ? false : content.autoApply"
       :close-on-auto-apply="content.closeOnAutoApply"
       :flow="content.enableFlow ? content.flowSteps : null"
       @flow-step="handleFlowStep"
@@ -87,12 +87,21 @@
       :key="dpKey"
     >
       <template #dp-input="{ value }">
-        <wwLayoutItemContext :index="0" :item="null" :data="{ preview: value, value: formatOutputValue(formatedValue) }" is-repeat>
+        <div v-if="uses24HourSegments" @click.stop class="native-field" :class="{ 'native-invalid': !inputValid || content.inputErrorMessage }" :style="typingStyle">
+          <label :for="inputId" class="native-label">{{ content.inputLabel || 'Time' }}<span v-if="content.required" class="native-required" aria-hidden="true"> *</span></label>
+          <Time24Input ref="time24Input" :id="inputId" :label="content.inputLabel || 'Time'" :clock-label="content.clockButtonLabel || 'Open time picker'"
+            :readonly="isReadOnly || isEditing" :required="content.required" :invalid="!inputValid || !!content.inputErrorMessage"
+            :described-by="!inputValid || content.inputErrorMessage ? `${inputId}-error` : undefined" :picker-open="pickerOpen"
+            @input="handleSegmentedInput" @commit="handle24HourCommit" @open="toggle24HourPicker" />
+          <span v-if="!inputValid || content.inputErrorMessage" :id="`${inputId}-error`" class="native-error">{{ content.inputErrorMessage || nativeError }}</span>
+        </div>
+        <wwLayoutItemContext v-else :index="0" :item="null" :data="{ preview: value, value: formatOutputValue(formatedValue) }" is-repeat>
           <wwLayout path="triggerZone" />
         </wwLayoutItemContext>
       </template>
       <template #action-select>
-        <wwElement v-bind="content.actionSelectElement" @click="selectDate" />
+        <button v-if="uses24HourSegments" type="button" class="time24-select" :style="typingStyle" @click="confirm24HourPicker">Select time</button>
+        <wwElement v-else v-bind="content.actionSelectElement" @click="selectDate" />
       </template>
       <template #left-sidebar v-if="content.enableLeftSidebar">
         <wwLayout path="leftSidebarZone" />
@@ -114,6 +123,8 @@
 </template>
 
 <script>
+import Time24Input from "./Time24Input.vue";
+import { parseLibraryInput } from "./timeInput.js";
 import DatePicker from "./vue-datepicker.js";
 import * as DateFnsLocal from "date-fns/locale";
 import "./main.css";
@@ -122,7 +133,7 @@ import { nativeInputValue, nativeInputCandidate } from "./nativeInput.js";
 
 export default {
   components: {
-    DatePicker,
+    DatePicker, Time24Input,
   },
   emits: ["update:content", "add-state", "remove-state", "trigger-event"],
   props: {
@@ -133,7 +144,7 @@ export default {
     /* wwEditor:end */
     wwElementState: { type: Object, required: true },
   },
-  data() { return { nativeKeyboardEdit: false }; },
+  data() { return { nativeKeyboardEdit: false, pickerOpen: false, focusAfterClose: false }; },
   setup(props, { emit }) {
     const initValue = computed(() =>
       props.content.selectionMode === "single"
@@ -204,7 +215,11 @@ export default {
       inputText, setInputText, inputValid, setInputValid, hasUncommittedInput, setHasUncommittedInput, nativeInputValue,
     };
   },
-  mounted() { this.resetInput(); },
+  mounted() {
+    this.resetInput();
+    wwLib.getFrontDocument().addEventListener("keydown", this.handle24HourEscape, true);
+  },
+  beforeUnmount() { wwLib.getFrontDocument().removeEventListener("keydown", this.handle24HourEscape, true); },
   watch: {
     variableValue(newValue, oldValue) {
       // An autosave may echo an equivalent ISO/time value while a new edit is in progress.
@@ -213,6 +228,7 @@ export default {
       this.resetInput();
     },
     canType() { this.resetInput(); },
+    uses24HourSegments() { this.pickerOpen = false; this.resetInput(); },
     "content.dateMode"() { this.resetInput(); },
     inputValid() { this.updateInputValidity(); },
     initValue(newValue, oldValue) {
@@ -222,6 +238,13 @@ export default {
         name: "initValueChange",
         event: { value: newValue },
       });
+    },
+    async dpKey() {
+      await this.$nextTick();
+      if (this.uses24HourSegments) { this.resetInput(); return; }
+      /* wwEditor:start */
+      if (!this.canType && !this.content.enableCalendarOnly) this.wwDatePicker.openMenu();
+      /* wwEditor:end */
     },
     /* wwEditor:start */
     "content.selectionMode"(value) {
@@ -233,11 +256,6 @@ export default {
         this.$emit("update:content:effect", { dateMode: "datetime" });
       this.setValue(this.initialValue);
     },
-    async dpKey() {
-      if (this.canType || this.content.enableCalendarOnly) return;
-      await this.$nextTick();
-      this.wwDatePicker.openMenu();
-    },
     "wwEditorState.isSelected"(value) {
       if (this.canType || !this.isEditing || !value || this.content.enableCalendarOnly) return;
       this.wwDatePicker.openMenu();
@@ -248,6 +266,7 @@ export default {
       handler(value) {
         if (value) {
           this.$emit("add-state", "readonly");
+          if (this.uses24HourSegments && this.pickerOpen) this.wwDatePicker?.closeMenu();
         } else {
           this.$emit("remove-state", "readonly");
         }
@@ -259,6 +278,7 @@ export default {
       return Boolean(this.content.allowTyping && ["date", "time"].includes(this.content.dateMode) &&
         this.content.selectionMode === "single" && (this.content.dateMode === "date" || !this.content.enableSeconds) && !this.content.enableCalendarOnly);
     },
+    uses24HourSegments() { return this.canType && this.content.dateMode === "time" && Boolean(this.content.use24); },
     inputId() { return `typable-date-time-${this.uid}`; },
     nativeError() { return `Enter a complete, valid ${this.content.dateMode === "date" ? "date" : "time"}.`; },
     typingStyle() {
@@ -294,6 +314,7 @@ export default {
     },
     /* https://github.com/date-fns/date-fns/blob/main/docs/unicodeTokens.md */
     previewFormat() {
+      if (this.uses24HourSegments) return "HH:mm";
       const format =
         this.content.format === "custom"
           ? this.content.customFormat
@@ -302,6 +323,10 @@ export default {
       return format.replace(/Y/g, "y").replace(/D/g, "d").replace(/A/g, "a");
     },
     formatedValue() {
+      if (this.uses24HourSegments) {
+        const text = nativeInputValue(this.variableValue, "time");
+        return text ? `${text}:00` : null;
+      }
       return this.formatInputValue(this.variableValue);
     },
     locale() {
@@ -407,9 +432,13 @@ export default {
     },
   },
   methods: {
+    getEditableCandidate() {
+      if (!this.canType || this.isReadOnly || this.isEditing) return null;
+      if (this.uses24HourSegments) return this.$refs.time24Input?.getCandidate() || null;
+      return this.$refs.nativeInput ? nativeInputCandidate(this.$refs.nativeInput, this.content.dateMode, this.content) : null;
+    },
     getInputState() {
-      const candidate = this.canType && this.$refs.nativeInput && !this.isReadOnly && !this.isEditing
-        ? nativeInputCandidate(this.$refs.nativeInput, this.content.dateMode, this.content) : null;
+      const candidate = this.getEditableCandidate();
       return {
         valid: candidate ? candidate.valid : !this.canType || this.inputValid,
         text: candidate ? candidate.text : this.canType ? this.inputText : nativeInputValue(this.variableValue, this.content.dateMode),
@@ -424,6 +453,16 @@ export default {
       this.setInputValid(true);
       this.setHasUncommittedInput(false);
       this.$nextTick(() => {
+        if (this.uses24HourSegments) {
+          const field = this.$refs.time24Input;
+          field?.setValue(this.inputText);
+          // The pinned library wraps custom inputs in a textbox role. Our real
+          // segment inputs supply the semantics; avoid a nested fake textbox.
+          const trigger = field?.$el.closest(".dp__input_wrap")?.parentElement;
+          if (trigger?.getAttribute("role") === "textbox") {
+            for (const name of ["role", "aria-label", "aria-multiline", "aria-readonly", "aria-disabled"]) trigger.removeAttribute(name);
+          }
+        }
         const input = this.$refs.nativeInput;
         if (input) {
           // No reactive value binding: browsers keep partially edited native
@@ -436,7 +475,17 @@ export default {
     },
     updateInputValidity() {
       this.$refs.nativeInput?.setCustomValidity(this.inputValid ? "" : this.nativeError);
+      this.$refs.time24Input?.setCustomValidity(this.inputValid ? "" : this.nativeError);
       this.$emit(this.inputValid ? "remove-state" : "add-state", "invalid");
+    },
+    handle24HourCommit(reason) {
+      if (reason === "blur" && this.pickerOpen) return;
+      return this.commitInput();
+    },
+    handleSegmentedInput(candidate) {
+      this.setInputText(candidate.text); this.setInputValid(candidate.valid); this.setHasUncommittedInput(true);
+      this.updateInputValidity();
+      this.$emit("trigger-event", { name: "input", event: this.getInputState() });
     },
     handleNativeInput(event) {
       if (event?.inputType === "insertFromPaste") this.nativeKeyboardEdit = true;
@@ -462,8 +511,11 @@ export default {
           (candidate.incomplete && !this.hasUncommittedInput)) this.handleNativeInput();
     },
     async commitInput() {
-      if (!this.canType || this.isReadOnly || this.isEditing || !this.$refs.nativeInput) return this.getInputState();
-      const candidate = nativeInputCandidate(this.$refs.nativeInput, this.content.dateMode, this.content);
+      if (!this.canType || this.isReadOnly || this.isEditing) return this.getInputState();
+      if (this.uses24HourSegments) this.$refs.time24Input?.normalizeSegments();
+      const candidate = this.getEditableCandidate();
+      if (!candidate) return this.getInputState();
+      this.setInputText(candidate.text);
       this.setInputValid(candidate.valid);
       this.updateInputValidity();
       if (!candidate.valid) {
@@ -482,11 +534,38 @@ export default {
       else if (/^[0-9ap]$/i.test(event.key) || ["Backspace", "Delete", "ArrowUp", "ArrowDown"].includes(event.key)) this.nativeKeyboardEdit = true;
       // Escape, arrows, segment selection, and separators remain native.
     },
-    handlePickerOpen() { this.$emit("trigger-event", { name: "open", event: {} }); },
-    handlePickerClosed() { this.$emit("trigger-event", { name: "close", event: {} }); },
+    handlePickerOpen() {
+      this.pickerOpen = true;
+      if (this.uses24HourSegments && this.hasUncommittedInput) {
+        const candidate = this.$refs.time24Input?.getCandidate();
+        const date = candidate?.valid && !candidate.empty ? parseLibraryInput(candidate.text) : null;
+        if (date) this.wwDatePicker.updateInternalModelValue(date);
+      }
+      this.$emit("trigger-event", { name: "open", event: {} });
+    },
+    handlePickerClosed() {
+      this.pickerOpen = false;
+      if (this.uses24HourSegments) {
+        if (this.focusAfterClose) this.$nextTick(() => this.$refs.time24Input?.focus());
+        else if (this.hasUncommittedInput) this.commitInput();
+      }
+      this.focusAfterClose = false;
+      this.$emit("trigger-event", { name: "close", event: {} });
+    },
+    toggle24HourPicker() {
+      if (this.isReadOnly || this.isEditing) return;
+      if (this.pickerOpen) { this.focusAfterClose = true; this.wwDatePicker.closeMenu(); }
+      else { this.pickerOpen = true; this.wwDatePicker.openMenu(); }
+    },
+    confirm24HourPicker() { this.focusAfterClose = true; this.selectDate(); },
+    handle24HourEscape(event) {
+      if (!this.uses24HourSegments || !this.pickerOpen || event.key !== "Escape") return;
+      event.preventDefault(); event.stopPropagation(); this.focusAfterClose = true; this.wwDatePicker.closeMenu();
+    },
     handleSelection(value) {
       if (this.canType) {
         this.nativeKeyboardEdit = false;
+        this.$refs.time24Input?.setValue(nativeInputValue(value, this.content.dateMode));
         this.setInputText(nativeInputValue(value, this.content.dateMode));
         this.setInputValid(true);
         this.setHasUncommittedInput(false);
@@ -544,6 +623,7 @@ export default {
     },
     openMenu() {
       if (!this.canType) { this.wwDatePicker.openMenu(); return; }
+      if (this.uses24HourSegments) { if (!this.isReadOnly && !this.isEditing) { this.pickerOpen = true; this.wwDatePicker.openMenu(); } return; }
       if (this.isReadOnly || this.isEditing) return;
       this.nativeKeyboardEdit = false;
       this.$refs.nativeInput?.focus();
@@ -551,7 +631,7 @@ export default {
       catch { /* Native indicator remains usable when showPicker is restricted. */ }
     },
     closeMenu() {
-      if (this.canType) { this.$refs.nativeInput?.blur(); return; }
+      if (this.canType && !this.uses24HourSegments) { this.$refs.nativeInput?.blur(); return; }
       this.$nextTick(() => {
         this.wwDatePicker.closeMenu();
       });
@@ -589,6 +669,8 @@ export default {
 .native-control:read-only::-webkit-calendar-picker-indicator { cursor: default; }
 .native-invalid .native-control { border-color: var(--typing-danger); background: var(--typing-error-background); }
 .native-error { display: block; margin-top: 6px; color: var(--typing-danger); font-size: var(--typing-label-size); line-height: 1.5; }
+.time24-select { padding: 6px 12px; border: 0; border-radius: var(--typing-radius); background: var(--typing-border); color: var(--typing-text); font-family: var(--typing-font); font-size: var(--typing-size); cursor: pointer; }
+.time24-select:focus-visible { outline: 2px solid var(--typing-focus); outline-offset: 2px; }
 @media (forced-colors: active) { .native-control:focus-visible { outline: 2px solid Highlight; } .native-invalid .native-control { border-color: Mark; } }
 </style>
 

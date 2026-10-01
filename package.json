@@ -1,6 +1,6 @@
 {
   "name": "ww-typable-date-picker",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "scripts": {
     "build": "weweb build --name=typable-date-picker --type=wwobject",
     "serve": "weweb serve",
@@ -22,6 +22,6 @@
     "@vuepic/vue-datepicker": "3.6.8",
     "date-fns": "4.1.0"
   },
-  "description": "WeWeb native segmented date/time fields with flexible styling and the original picker fallback",
+  "description": "WeWeb segmented date/time fields with native browser mode, enforced 24-hour entry, and flexible styling",
   "private": true
 }

@@ -112,7 +112,7 @@ export default {
       {
         label: "Time",
         isCollapsible: true,
-        properties: ["dateMode", "timezone", "use24", "enableSeconds", "allowTyping", "inputLabel", "inputErrorMessage"],
+        properties: ["dateMode", "timezone", "use24", "enableSeconds", "allowTyping", "inputLabel", "inputErrorMessage", "clockButtonLabel"],
       },
       {
         label: "Dates",
@@ -188,7 +188,7 @@ export default {
     allowTyping: {
       label: { en: "Allow typing" }, type: "OnOff", section: "settings", defaultValue: false, bindable: true,
       hidden: (content) => !["date", "time"].includes(content.dateMode) || content.selectionMode !== "single" || (content.dateMode === "time" && content.enableSeconds) || content.enableCalendarOnly,
-      propertyHelp: { tooltip: "Native date/time segments, separators, and picker. Single values, time without seconds. Browser locale controls display; time selections retain HH:mm:00. Save must await Commit typed input and check its validation result." },
+      propertyHelp: { tooltip: "Editable date/time segments and automatic separators. Single values without time seconds. 24h mode controls the time field and picker display; otherwise native browser formatting applies. Save must await Commit typed input and check its validation result." },
     },
     inputLabel: {
       label: { en: "Input label" }, type: "Text", section: "settings", defaultValue: "", bindable: true,
@@ -201,7 +201,7 @@ export default {
     },
     clockButtonLabel: {
       label: { en: "Clock button accessible name" }, type: "Text", section: "settings", defaultValue: "Open time picker", bindable: true,
-      hidden: true,
+      hidden: (content) => !content.allowTyping || content.dateMode !== "time" || !content.use24,
     },
     inputHeight: {
       ...generateThemeSizingConfig("Input minimum height", 40, 200, false),
@@ -483,7 +483,7 @@ export default {
     },
     use24: {
       label: { en: "24h mode", fr: "Mode 24h" },
-      propertyHelp: { tooltip: "Applies to the library picker. Native typing uses the browser/OS display format; the native value is always 24-hour." },
+      propertyHelp: { tooltip: "When Allow typing is on, 24h mode uses hour/minute segments and the existing 24-hour picker, without AM/PM. Off uses the native browser time display. Saved times retain HH:mm:00." },
       type: "OnOff",
       section: "settings",
       defaultValue: false,

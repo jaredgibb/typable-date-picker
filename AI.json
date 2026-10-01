@@ -1,7 +1,7 @@
 {
     "metadata": {
         "name": "ww-typable-date-picker",
-        "description": "Configurable WeWeb date/time picker. Allow typing enables native segmented date/time controls for single values without time seconds, with persistent labels, native pickers, validation, and flexible styles. Unsupported modes and Allow typing off retain the original library picker.",
+        "description": "Configurable WeWeb date/time picker. Allow typing enables native segmented dates and browser time, or explicit 24-hour hour/minute segments and the original 24-hour library picker when use24 is true. Persistent labels, validation, and flexible styling retain the committed value contract.",
         "keywords": [
             "date",
             "time",
@@ -37,7 +37,9 @@
             "Exposed input validity and an awaitable commit action for Save/Submit",
             "Native date/time segments and browser-supplied separators",
             "Persistent border labels and native calendar/clock indicators",
-            "Flexible field, label, focus, required-marker, and error styling"
+            "Flexible field, label, focus, required-marker, and error styling",
+            "Enforced 24-hour field and picker display when use24 is true; no AM/PM",
+            "Permanent colon and separately editable hour/minute segments in forced 24-hour mode"
         ]
     },
     "properties": [
@@ -185,7 +187,7 @@
         },
         {
             "name": "use24",
-            "description": "24-hour display for the library picker only. Native display uses the browser/OS locale; native time values are always HH:mm.",
+            "description": "With Allow typing on, true uses explicit hour/minute segments and the existing 24-hour picker without AM/PM. False uses the native browser display. Time commits remain HH:mm:00. With typing off, this controls the original library picker.",
             "type": "boolean",
             "defaultValue": false,
             "responsive": true,
@@ -748,7 +750,7 @@
             "name": "allowTyping",
             "type": "boolean",
             "defaultValue": false,
-            "description": "Native date/time segments and picker for single values, without seconds in time mode or inline display. Off preserves the original trigger slot. Browser locale controls visible formatting; use24 affects only the library picker."
+            "description": "Editable date/time segments for single values without time seconds or inline display. Date is native; time is native with use24=false, or explicit 24-hour segments with the existing picker when use24=true. Off keeps the original trigger slot."
         },
         {
             "name": "inputLabel",
@@ -766,7 +768,7 @@
             "name": "clockButtonLabel",
             "type": "string",
             "defaultValue": "Open time picker",
-            "description": "Legacy v0.1 setting, retained for saved configurations. Native picker accessibility is supplied by the browser."
+            "description": "Accessible name of the explicit 24-hour clock button. Native indicator accessibility remains browser-controlled."
         },
         {
             "name": "inputHeight",
@@ -886,12 +888,12 @@
         },
         {
             "name": "open",
-            "description": "Library picker event only. Native popups do not expose standard open/close events.",
+            "description": "Library picker event, including forced 24-hour mode. Native popups do not expose standard open/close events.",
             "payload": {}
         },
         {
             "name": "close",
-            "description": "Library picker event only. Native popups do not expose standard open/close events.",
+            "description": "Library picker event, including forced 24-hour mode. Native popups do not expose standard open/close events.",
             "payload": {}
         }
     ],
@@ -938,7 +940,7 @@
         },
         {
             "name": "actionSelectElement",
-            "description": "Confirmation element for the original library picker. Native mode uses the browser popup and its confirmation behavior.",
+            "description": "Original library confirmation element. Forced 24-hour typing uses a built-in Select time button with the same handler; native mode uses browser confirmation.",
             "type": "object"
         },
         {
@@ -961,7 +963,7 @@
         {
             "name": "inputText",
             "type": "string",
-            "description": "Serialized native input value (YYYY-MM-DD or HH:mm), not the rendered segment text. Partial native segments can be visible with inputText empty; use inputValid and Commit typed input."
+            "description": "Serialized native input value, or explicit 24-hour segment text including partial/invalid segments. Native partial segments can be visible while this is empty; inspect the commit result before Save."
         },
         {
             "name": "inputValid",
@@ -984,12 +986,14 @@
         "`customFormat` only takes effect when `format=\"custom\"`. Unicode tokens (Y/y, D/d, A/a) are normalized internally.",
         "Advanced date constraints (`preventMinMaxNavigation`, `ignoreTimeValidation`, `allowedDates`, `disabledDates`, `disabledWeekDays`) are only surfaced in the editor behind an 'Advanced' toggle, but can be bound at any time.",
         "The existing _wwForm:useForm injection registers the committed value when supplied by the host form. Custom Save/Submit workflows must still await Commit typed input and inspect validity before reading that value.",
-        "In native mode use input type=date or type=time step=60. Browser locale/OS controls segment order, placeholders, AM/PM versus 24-hour display, picker UI and icons. Format/customFormat/use24 apply to the library fallback.",
+        "In native mode use input type=date or type=time step=60. Browser locale/OS controls segment order, placeholders, AM/PM versus 24-hour display, picker UI and icons. Format/customFormat apply to the library fallback. When use24=true in editable Time mode, controlled hour/minute segments and the existing library picker enforce 24-hour display instead of native formatting.",
         "Keyboard edits commit on Enter, Tab, blur, or Commit typed input. Native picker confirmation commits through the same value/change handler. Enter in the input does not submit a surrounding form. Other segment navigation and Escape remain native.",
         "Native DOM time value is HH:mm; component committed time retains HH:mm:00 for compatibility. Native date commits YYYY-MM-DD. ISO hydration uses browser-local segments and remains unchanged until edited.",
         "Native partial segments may expose empty value and badInput=true. They must not clear or save an old committed value. Required blank fields remain syntactically valid for draft Save.",
         "Await Commit typed input before Save/Submit; block invalid/pending edits, then continue the host checkpoint queue and date/time recombination. Bind inputErrorMessage for incomplete pair or ordering errors; the component does not own pair autosave, duration or timestamp persistence.",
-        "Native popups cannot be styled like the field. Arbitrary allowed/disabled dates are validated after selection; native calendars expose min/max restrictions. Original library-specific features remain available with Allow typing off."
+        "Native popups cannot be styled like the field. Arbitrary allowed/disabled dates are validated after selection; native calendars expose min/max restrictions. Original library-specific features remain available with Allow typing off.",
+        "With Allow typing and use24=true: empty display --:--, separately editable hour/minute segments, permanent colon, automatic padding/advancement, no AM/PM in either input or picker. Enter/Tab/field exit/Commit typed input commits through value/change; Select time and Escape return focus without duplicate checkpoints.",
+        "Changing use24 restores the committed value in the selected display path without emitting change. Avoid changing display mode during pending edits."
     ],
     "examples": [
         {

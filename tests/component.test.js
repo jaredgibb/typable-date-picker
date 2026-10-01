@@ -8,7 +8,7 @@ const wrappers = [];
 afterEach(() => { for (const wrapper of wrappers.splice(0)) wrapper.unmount(); });
 function create(overrides = {}) {
   const content = Object.fromEntries(Object.entries(config.properties).map(([name, property]) => [name, property.defaultValue]));
-  Object.assign(content, { dateMode: "time", selectionMode: "single", use24: true, allowTyping: true, autoApply: false }, overrides);
+  Object.assign(content, { dateMode: "time", selectionMode: "single", use24: false, allowTyping: true, autoApply: false }, overrides);
   const wrapper = mount(Element, {
     attachTo: document.body,
     props: { content, uid: `test-${wrappers.length}`, wwElementState: { props: {}, states: [] }, wwEditorState: { editMode: "preview" } },
@@ -258,5 +258,181 @@ describe("native controls and legacy fallback", () => {
     await wrapper.setProps({ content: { ...wrapper.props("content"), use24: false } });
     await flushPromises();
     expect(wrapper.find(".native-control").exists()).toBe(true);
+  });
+});
+
+describe("explicit 24-hour segmented input", () => {
+  const segment = (wrapper, part) => wrapper.get(`.time24-segment${part === 'hours' ? ':first-of-type' : ':last-of-type'}`);
+  const type = async (wrapper, part, text) => { await segment(wrapper, part).setValue(text); };
+  it("renders hours/minutes and a permanent colon without AM/PM", async () => {
+    const wrapper = create({ use24: true, inputLabel: "Arrival time", initValueSingle: "21:34:00" });
+    await flushPromises();
+    expect(wrapper.vm.uses24HourSegments).toBe(true);
+    expect(segment(wrapper, "hours").element.value).toBe("21");
+    expect(segment(wrapper, "minutes").element.value).toBe("34");
+    expect(wrapper.get(".time24-separator").text()).toBe(":");
+    expect(wrapper.find("input[type=time]").exists()).toBe(false);
+    expect(wrapper.get(".time24-clock").attributes("aria-label")).toBe("Open time picker");
+    expect(wrapper.text()).not.toMatch(/AM|PM/);
+  });
+  it("types 1430 across segments without entering a colon, and Enter commits once", async () => {
+    const wrapper = create({ use24: true });
+    await flushPromises();
+    await type(wrapper, "hours", "14");
+    expect(document.activeElement).toBe(segment(wrapper, "minutes").element);
+    await type(wrapper, "minutes", "30");
+    expect(wrapper.vm.getInputState()).toMatchObject({ valid: true, text: "14:30", value: null, hasUncommittedInput: true });
+    const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    segment(wrapper, "minutes").element.dispatchEvent(event);
+    await flushPromises();
+    expect(event.defaultPrevented).toBe(true);
+    expect(wrapper.vm.variableValue).toBe("14:30:00");
+    await wrapper.vm.commitInput();
+    expect(changes(wrapper)).toHaveLength(1);
+  });
+  it("accepts an explicit colon key without duplicating the permanent separator", async () => {
+    const wrapper = create({ use24: true });
+    await flushPromises();
+    await type(wrapper, "hours", "14");
+    const event = new KeyboardEvent("keydown", { key: ":", cancelable: true, bubbles: true });
+    segment(wrapper, "minutes").element.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    await type(wrapper, "minutes", "30");
+    expect((await wrapper.vm.commitInput()).value).toBe("14:30:00");
+  });
+  it("zero-pads a completed single hour and permits midnight", async () => {
+    const wrapper = create({ use24: true });
+    await flushPromises();
+    await type(wrapper, "hours", "9");
+    expect(segment(wrapper, "hours").element.value).toBe("09");
+    expect(document.activeElement).toBe(segment(wrapper, "minutes").element);
+    await type(wrapper, "hours", "00"); await type(wrapper, "minutes", "00");
+    expect((await wrapper.vm.commitInput()).value).toBe("00:00:00");
+  });
+  it.each([["25", "30"], ["14", "75"], ["1", ""]])("retains invalid/partial %s:%s without replacing the old value", async (hours, minutes) => {
+    const wrapper = create({ use24: true, initValueSingle: "14:30:00" });
+    await flushPromises();
+    await type(wrapper, "hours", hours); await type(wrapper, "minutes", minutes);
+    expect(await wrapper.vm.commitInput()).toMatchObject({ valid: false, incomplete: true, value: "14:30:00", hasUncommittedInput: true });
+    expect(segment(wrapper, "hours").element.value).toBe(hours === "1" ? "01" : hours);
+    expect(segment(wrapper, "minutes").element.value).toBe(minutes);
+    expect(changes(wrapper)).toHaveLength(0);
+  });
+  it("captures Save from current DOM segments before an input event", async () => {
+    const wrapper = create({ use24: true });
+    await flushPromises();
+    segment(wrapper, "hours").element.value = "23";
+    segment(wrapper, "minutes").element.value = "59";
+    expect((await wrapper.vm.commitInput()).value).toBe("23:59:00");
+  });
+  it("clears one segment as partial, then both as null", async () => {
+    const wrapper = create({ use24: true, initValueSingle: "14:30:00", required: true });
+    await flushPromises();
+    await segment(wrapper, "hours").trigger("keydown", { key: "Backspace" });
+    expect((await wrapper.vm.commitInput()).valid).toBe(false);
+    await segment(wrapper, "minutes").trigger("keydown", { key: "Delete" });
+    expect(await wrapper.vm.commitInput()).toMatchObject({ valid: true, value: null });
+    expect(changes(wrapper)).toHaveLength(1);
+  });
+  it("supports arrows and normal Tab navigation between segments", async () => {
+    const wrapper = create({ use24: true, initValueSingle: "23:59:00" });
+    await flushPromises();
+    await segment(wrapper, "hours").trigger("keydown", { key: "ArrowUp" });
+    expect(segment(wrapper, "hours").element.value).toBe("00");
+    await segment(wrapper, "hours").trigger("keydown", { key: "ArrowRight" });
+    expect(document.activeElement).toBe(segment(wrapper, "minutes").element);
+    await segment(wrapper, "minutes").trigger("keydown", { key: "ArrowDown" });
+    expect(segment(wrapper, "minutes").element.value).toBe("58");
+    const event = new KeyboardEvent("keydown", { key: "Tab", cancelable: true, bubbles: true });
+    segment(wrapper, "minutes").element.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(wrapper.vm.variableValue).toBe("00:58:00");
+  });
+  it("keeps the library popup in 24-hour mode, seeds pending text, confirms, and restores focus", async () => {
+    const wrapper = create({ use24: true, initValueSingle: "14:30:00" });
+    await flushPromises();
+    await type(wrapper, "hours", "16"); await type(wrapper, "minutes", "45");
+    await wrapper.get(".time24-clock").trigger("click");
+    await flushPromises();
+    expect(wrapper.vm.pickerOpen).toBe(true);
+    expect(document.body.textContent).toContain("Select time");
+    expect(document.body.textContent).not.toMatch(/AM|PM/);
+    expect(changes(wrapper)).toHaveLength(0);
+    wrapper.vm.wwDatePicker.updateInternalModelValue(new Date(2026, 9, 1, 21, 34));
+    await nextTick();
+    const confirm = Array.from(document.querySelectorAll("button")).find(node => node.textContent === "Select time");
+    confirm.click();
+    await flushPromises();
+    expect(wrapper.vm.variableValue).toBe("21:34:00");
+    expect(segment(wrapper, "hours").element.value).toBe("21");
+    expect(segment(wrapper, "minutes").element.value).toBe("34");
+    expect(document.activeElement).toBe(segment(wrapper, "minutes").element);
+    expect(changes(wrapper)).toHaveLength(1);
+  });
+  it("closes Escape without committing pending text and restores focus", async () => {
+    const wrapper = create({ use24: true, initValueSingle: "14:30:00" });
+    await flushPromises();
+    await type(wrapper, "hours", "16"); await type(wrapper, "minutes", "45");
+    await wrapper.get(".time24-clock").trigger("click");
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    await flushPromises();
+    expect(wrapper.vm.pickerOpen).toBe(false);
+    expect(wrapper.vm.getInputState()).toMatchObject({ text: "16:45", value: "14:30:00", hasUncommittedInput: true });
+    expect(changes(wrapper)).toHaveLength(0);
+    expect(document.activeElement).toBe(segment(wrapper, "minutes").element);
+  });
+  it("hydrates ISO values, cancels edits, and silently resets", async () => {
+    const iso = new Date(2026, 9, 1, 21, 34).toISOString();
+    const wrapper = create({ use24: true, initValueSingle: iso });
+    await flushPromises();
+    expect(segment(wrapper, "hours").element.value).toBe("21");
+    await type(wrapper, "hours", "16");
+    wrapper.vm.resetInput(); await flushPromises();
+    expect(segment(wrapper, "hours").element.value).toBe("21");
+    wrapper.vm.clearValue(); await flushPromises();
+    expect(wrapper.get(".time24-separator").text()).toBe(":");
+    expect(segment(wrapper, "hours").element.value).toBe("");
+    expect(segment(wrapper, "minutes").element.value).toBe("");
+    expect(changes(wrapper)).toHaveLength(0);
+  });
+  it("blocks readonly typing and clock opening", async () => {
+    const wrapper = create({ use24: true, readonly: true, initValueSingle: "14:30:00" });
+    await flushPromises();
+    expect(segment(wrapper, "hours").element.readOnly).toBe(true);
+    expect(wrapper.get(".time24-clock").element.disabled).toBe(true);
+    await segment(wrapper, "hours").trigger("keydown", { key: "ArrowUp" });
+    wrapper.vm.openMenu();
+    expect(wrapper.vm.variableValue).toBe("14:30:00");
+    expect(wrapper.vm.pickerOpen).toBe(false);
+  });
+  it("retains pending segments through an equivalent autosave echo", async () => {
+    const wrapper = create({ use24: true, initValueSingle: "14:30:00" });
+    await flushPromises();
+    await type(wrapper, "hours", "16"); await type(wrapper, "minutes", "45");
+    await wrapper.setProps({ content: { ...wrapper.props("content"), initValueSingle: new Date(2026, 9, 1, 14, 30).toISOString() } });
+    await flushPromises();
+    expect(wrapper.vm.getInputState()).toMatchObject({ text: "16:45", hasUncommittedInput: true });
+    expect(changes(wrapper)).toHaveLength(0);
+  });
+  it("hydrates after a picker layout key changes and removes the library's nested textbox role", async () => {
+    const wrapper = create({ use24: true, initValueSingle: "21:34:00" });
+    await flushPromises();
+    await wrapper.setProps({ content: { ...wrapper.props("content"), menuPosition: "left" } });
+    await flushPromises();
+    expect(segment(wrapper, "hours").element.value).toBe("21");
+    const outer = wrapper.get(".dp__input_wrap").element.parentElement;
+    expect(outer.hasAttribute("role")).toBe(false);
+    expect(changes(wrapper)).toHaveLength(0);
+  });
+  it("switches native/24-hour paths without changing the committed value", async () => {
+    const wrapper = create({ use24: false, initValueSingle: "21:34:00" });
+    await flushPromises();
+    await wrapper.setProps({ content: { ...wrapper.props("content"), use24: true } });
+    await flushPromises();
+    expect(segment(wrapper, "hours").element.value).toBe("21");
+    await wrapper.setProps({ content: { ...wrapper.props("content"), use24: false } });
+    await flushPromises();
+    expect(wrapper.get(".native-control").element.value).toBe("21:34");
+    expect(changes(wrapper)).toHaveLength(0);
   });
 });
