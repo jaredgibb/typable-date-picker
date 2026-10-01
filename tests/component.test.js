@@ -29,155 +29,234 @@ function create(overrides = {}) {
 }
 const changes = (wrapper) => (wrapper.emitted("trigger-event") || []).map(([event]) => event).filter((event) => event.name === "change");
 
-describe("component with the real vendored picker", () => {
-  it("defaults Allow typing off and preserves the legacy trigger", () => {
+async function edit(wrapper, text) {
+  wrapper.get(".native-control").element.value = text;
+  await wrapper.get(".native-control").trigger("input");
+}
+function partial(wrapper) {
+  const input = wrapper.get(".native-control").element;
+  input.value = "";
+  Object.defineProperty(input, "validity", { configurable: true, get: () => ({ badInput: true }) });
+  return input;
+}
+
+describe("native controls and legacy fallback", () => {
+  it("defaults typing off and retains the real library trigger", () => {
     expect(config.properties.allowTyping.defaultValue).toBe(false);
     const wrapper = create({ allowTyping: false });
-    expect(wrapper.find(".typing-input").exists()).toBe(false);
+    expect(wrapper.find(".native-control").exists()).toBe(false);
     expect(wrapper.text()).toContain("Legacy trigger");
+    wrapper.vm.handleSelection("14:30:00");
+    expect(wrapper.vm.variableValue).toBe("14:30:00");
   });
-  it.each([{ dateMode: "date" }, { selectionMode: "range" }, { use24: false }, { enableSeconds: true }, { enableCalendarOnly: true }])("keeps unsupported modes on the existing path (%j)", (override) => {
-    expect(create(override).find(".typing-input").exists()).toBe(false);
+  it.each([{ dateMode: "datetime" }, { selectionMode: "range" }, { enableSeconds: true }, { enableCalendarOnly: true }])("preserves the library for unsupported configurations %j", override => {
+    expect(create(override).find(".native-control").exists()).toBe(false);
   });
-  it("keeps valid text pending, commits Enter once, and prevents form submission", async () => {
+  it("uses native time with step=60 even when the library 24-hour setting is off", async () => {
+    const wrapper = create({ use24: false });
+    await nextTick();
+    expect(wrapper.get(".native-control").attributes("type")).toBe("time");
+    expect(wrapper.get(".native-control").attributes("step")).toBe("60");
+    await edit(wrapper, "21:34");
+    expect((await wrapper.vm.commitInput()).value).toBe("21:34:00");
+  });
+  it("provides native dates with canonical YYYY-MM-DD and constraints", async () => {
+    const wrapper = create({ dateMode: "date", minDate: "2026-09-01", maxDate: "2026-12-31" });
+    await nextTick();
+    expect(wrapper.get(".native-control").attributes()).toMatchObject({ type: "date", min: "2026-09-01", max: "2026-12-31" });
+    await edit(wrapper, "2026-10-01");
+    expect((await wrapper.vm.commitInput()).value).toBe("2026-10-01");
+    await edit(wrapper, "2027-01-01");
+    expect((await wrapper.vm.commitInput()).valid).toBe(false);
+    expect(wrapper.vm.variableValue).toBe("2026-10-01");
+  });
+  it("retains valid pending input, prevents Enter submission and commits once", async () => {
     const wrapper = create();
-    const input = wrapper.get(".typing-input");
-    await input.setValue("14:30");
+    await edit(wrapper, "14:30");
     expect(wrapper.vm.variableValue).toBe(null);
     expect(wrapper.vm.getInputState().hasUncommittedInput).toBe(true);
     const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
-    input.element.dispatchEvent(event);
+    wrapper.get(".native-control").element.dispatchEvent(event);
     await flushPromises();
     expect(event.defaultPrevented).toBe(true);
     expect(wrapper.vm.variableValue).toBe("14:30:00");
-    await input.trigger("blur");
-    await wrapper.vm.commitInput();
+    await wrapper.get(".native-control").trigger("change");
+    await wrapper.get(".native-control").trigger("blur");
     expect(changes(wrapper)).toHaveLength(1);
   });
-  it("Tab advances normally and a following blur does not duplicate the commit", async () => {
+  it("Tab commits midnight without blocking native segment navigation", async () => {
     const wrapper = create();
-    const input = wrapper.get(".typing-input");
-    await input.setValue("00:00");
+    await edit(wrapper, "00:00");
     const event = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
-    input.element.dispatchEvent(event);
-    input.element.dispatchEvent(new FocusEvent("blur"));
+    wrapper.get(".native-control").element.dispatchEvent(event);
     await flushPromises();
     expect(event.defaultPrevented).toBe(false);
     expect(wrapper.vm.variableValue).toBe("00:00:00");
+    await wrapper.get(".native-control").trigger("blur");
     expect(changes(wrapper)).toHaveLength(1);
   });
-  it("commits field exit and captures Save before blur via the exposed action", async () => {
+  it.each(["Escape", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Backspace", "Delete"])("leaves %s to the browser", async key => {
     const wrapper = create();
-    const input = wrapper.get(".typing-input");
-    await input.setValue("23:59");
-    await input.trigger("blur");
+    const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+    wrapper.get(".native-control").element.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+  });
+  it("captures Save before blur, even before an input event is delivered", async () => {
+    const wrapper = create();
+    await nextTick();
+    wrapper.get(".native-control").element.value = "23:59";
+    expect(wrapper.vm.getInputState()).toMatchObject({ valid: true, hasUncommittedInput: true });
+    expect(await wrapper.vm.commitInput()).toMatchObject({ valid: true, value: "23:59:00", hasUncommittedInput: false });
+    expect(changes(wrapper)).toHaveLength(1);
+  });
+  it("blocks incomplete segments with empty native value instead of clearing the previous time", async () => {
+    const wrapper = create({ initValueSingle: "14:30:00" });
     await flushPromises();
-    expect(wrapper.vm.variableValue).toBe("23:59:00");
-    await input.setValue("08:09");
-    const result = await wrapper.vm.commitInput();
-    expect(result).toMatchObject({ valid: true, value: "08:09:00", hasUncommittedInput: false });
-    expect(changes(wrapper)).toHaveLength(2);
-  });
-  it.each(["25:30", "14:75", "1"])("retains invalid %s and exposes a blocking Save state", async (text) => {
-    const wrapper = create({ initValueSingle: "14:30:00" });
-    await wrapper.get(".typing-input").setValue(text);
-    const result = await wrapper.vm.commitInput();
-    expect(result).toMatchObject({ valid: false, text, value: "14:30:00", hasUncommittedInput: true });
-    expect(wrapper.get(".typing-input").element.value).toBe(text);
-    expect(wrapper.get(".typing-input").attributes("aria-invalid")).toBe("true");
-    expect(wrapper.get(".typing-input").element.validity.customError).toBe(true);
+    const input = partial(wrapper);
+    await wrapper.get(".native-control").trigger("input");
+    expect(await wrapper.vm.commitInput()).toMatchObject({ valid: false, incomplete: true, text: "", value: "14:30:00", hasUncommittedInput: true });
     expect(changes(wrapper)).toHaveLength(0);
+    expect(wrapper.get(".native-control").attributes("aria-invalid")).toBe("true");
+    expect(wrapper.text()).toContain("Enter a complete, valid time.");
+    delete input.validity;
+    await edit(wrapper, "16:45");
+    expect((await wrapper.vm.commitInput()).valid).toBe(true);
+    expect(input.validity.customError).toBe(false);
   });
-  it("clears through the library, emits null once, and never retains the previous time", async () => {
+  it("preserves partially edited browser segments through unrelated rerenders", async () => {
     const wrapper = create({ initValueSingle: "14:30:00" });
-    await wrapper.get(".typing-input").setValue("");
-    await wrapper.vm.commitInput();
-    expect(wrapper.vm.variableValue).toBe(null);
-    expect(wrapper.vm.inputText).toBe("");
-    expect(changes(wrapper)).toEqual([{ name: "change", event: { value: null } }]);
+    await flushPromises();
+    const input = partial(wrapper);
+    await wrapper.get(".native-control").trigger("input");
+    await wrapper.setProps({ content: { ...wrapper.props("content"), inputLabel: "Updated label", inputErrorMessage: "Host pair error" } });
+    expect(input.value).toBe("");
+    expect(input.validity.badInput).toBe(true);
+    expect(wrapper.vm.variableValue).toBe("14:30:00");
   });
-  it("hydration and reset replace both values without checkpoint events", async () => {
-    const wrapper = create({ initValueSingle: "2026-09-15T14:24:00.000Z" });
-    expect(wrapper.vm.variableValue).toBe("2026-09-15T14:24:00.000Z");
-    expect(wrapper.vm.inputText).toMatch(/^\d\d:\d\d$/);
-    await wrapper.get(".typing-input").setValue("1");
+  it("clears to null once and permits blank draft values even when required", async () => {
+    const wrapper = create({ initValueSingle: "14:30:00", required: true });
+    await flushPromises();
+    await edit(wrapper, "");
+    expect(await wrapper.vm.commitInput()).toMatchObject({ valid: true, value: null, hasUncommittedInput: false });
+    await wrapper.get(".native-control").trigger("blur");
+    expect(changes(wrapper)).toHaveLength(1);
+    expect(changes(wrapper)[0].event.value).toBe(null);
+    expect(wrapper.get(".native-control").element.validity.valueMissing).toBe(true);
+  });
+  it("hydrates ISO values without change events; reset silently clears both paths", async () => {
+    const iso = new Date(2026, 9, 1, 10, 24).toISOString();
+    const wrapper = create({ initValueSingle: iso });
+    await flushPromises();
+    expect(wrapper.get(".native-control").element.value).toBe("10:24");
+    expect(wrapper.vm.variableValue).toBe(iso);
+    await wrapper.setProps({ content: { ...wrapper.props("content"), initValueSingle: "18:09:00" } });
+    await flushPromises();
+    expect(wrapper.get(".native-control").element.value).toBe("18:09");
+    expect(changes(wrapper)).toHaveLength(0);
     wrapper.vm.clearValue();
-    await nextTick();
-    expect(wrapper.vm.getInputState()).toMatchObject({ value: null, text: "", valid: true, hasUncommittedInput: false });
-    await wrapper.setProps({ content: { ...wrapper.props("content"), initValueSingle: "06:07:00" } });
-    expect(wrapper.vm.inputText).toBe("06:07");
-    expect(changes(wrapper)).toHaveLength(0);
-  });
-  it("keeps an in-progress invalid edit when autosave echoes the same minute", async () => {
-    const wrapper = create({ initValueSingle: "14:30:00" });
-    await wrapper.get(".typing-input").setValue("1");
-    wrapper.vm.setValue("14:30");
-    await nextTick();
-    expect(wrapper.vm.inputText).toBe("1");
-    expect(wrapper.vm.inputValid).toBe(false);
-  });
-  it("cancels an older pending commit when a newer edit arrives", async () => {
-    const wrapper = create();
-    const input = wrapper.get(".typing-input");
-    await input.setValue("14:30");
-    const pending = wrapper.vm.commitInput();
-    input.element.value = "15:45";
-    input.element.dispatchEvent(new Event("input", { bubbles: true }));
-    await pending;
-    expect(changes(wrapper)).toHaveLength(0);
-    await wrapper.vm.commitInput();
-    expect(wrapper.vm.variableValue).toBe("15:45:00");
-    expect(changes(wrapper)).toHaveLength(1);
-  });
-  it("does not checkpoint when moving from the input into the picker", async () => {
-    const wrapper = create();
-    const input = wrapper.get(".typing-input");
-    await input.setValue("14:30");
-    input.element.dispatchEvent(new FocusEvent("blur", { relatedTarget: wrapper.get(".typing-clock").element }));
-    await wrapper.get(".typing-clock").trigger("click");
     await flushPromises();
+    expect(wrapper.get(".native-control").element.value).toBe("");
+    expect(wrapper.vm.variableValue).toBe(null);
     expect(changes(wrapper)).toHaveLength(0);
-    expect(wrapper.vm.pickerOpen).toBe(true);
-    const hours = document.querySelector('[aria-label="Open hours overlay"]');
-    const minutes = document.querySelector('[aria-label="Open minutes overlay"]');
-    expect(hours.textContent).toBe("14");
-    expect(minutes.textContent).toBe("30");
   });
-  it("blocks typing and opening in read-only mode", async () => {
-    const wrapper = create({ initValueSingle: "14:30:00", readonly: true });
-    expect(wrapper.get(".typing-input").attributes()).toHaveProperty("readonly");
-    expect(wrapper.get(".typing-clock").attributes()).toHaveProperty("disabled");
-    await wrapper.get(".typing-input").setValue("15:00");
+  it("keeps new edits when autosave echoes an equivalent ISO value", async () => {
+    const wrapper = create({ initValueSingle: "14:30:00" });
+    await flushPromises();
+    await edit(wrapper, "16:45");
+    await wrapper.setProps({ content: { ...wrapper.props("content"), initValueSingle: new Date(2026, 9, 1, 14, 30).toISOString() } });
+    await flushPromises();
+    expect(wrapper.get(".native-control").element.value).toBe("16:45");
+    expect(wrapper.vm.hasUncommittedInput).toBe(true);
+  });
+  it("restores the committed value on Cancel, and resets invalid state", async () => {
+    const wrapper = create({ initValueSingle: "14:30:00" });
+    await flushPromises();
+    const input = partial(wrapper);
+    await wrapper.get(".native-control").trigger("input");
+    delete input.validity;
+    wrapper.vm.resetInput();
+    await flushPromises();
+    expect(input.value).toBe("14:30");
+    expect(wrapper.vm.inputValid).toBe(true);
+    expect(changes(wrapper)).toHaveLength(0);
+  });
+  it("keeps labels associated and visible in empty/filled states, with a required marker", async () => {
+    const wrapper = create({ inputLabel: "Arrival time", required: true });
+    await flushPromises();
+    expect(wrapper.get("label").attributes("for")).toBe(wrapper.get(".native-control").attributes("id"));
+    expect(wrapper.get(".native-required").text()).toBe("*");
+    await edit(wrapper, "21:34");
+    expect(wrapper.get("label").text()).toBe("Arrival time *");
+    const date = create({ dateMode: "date" });
+    expect(date.get("label").text()).toBe("Date");
+  });
+  it("exposes flexible styles and associated host validation messages", async () => {
+    const wrapper = create({ themeFontSize: "12px", inputHeight: "38px", inputBorderWidth: "2px", inputFocusColor: "#123456", inputLabelFontSize: "10px", inputShadow: "none", inputErrorMessage: "Clear must follow Arrival" });
+    await flushPromises();
+    expect(wrapper.vm.typingStyle).toMatchObject({ "--typing-size": "12px", "--typing-height": "38px", "--typing-border-width": "2px", "--typing-focus": "#123456", "--typing-label-size": "10px", "--typing-shadow": "none" });
+    expect(wrapper.get(".native-field").classes()).toContain("native-invalid");
+    expect(wrapper.get(".native-control").attributes("aria-describedby")).toBe(wrapper.get(".native-error").attributes("id"));
+  });
+  it("blocks read-only editing and picker actions", async () => {
+    const wrapper = create({ readonly: true, initValueSingle: "14:30:00" });
+    await flushPromises();
+    const input = wrapper.get(".native-control");
+    expect(input.element.readOnly).toBe(true);
+    let opens = 0;
+    input.element.showPicker = () => opens++;
+    wrapper.vm.openMenu();
+    await edit(wrapper, "21:34");
     await wrapper.vm.commitInput();
+    expect(opens).toBe(0);
     expect(wrapper.vm.variableValue).toBe("14:30:00");
     expect(changes(wrapper)).toHaveLength(0);
   });
-  it("has an associated label and a named clock button", () => {
-    const wrapper = create({ inputLabel: "Arrival time" });
-    expect(wrapper.get("label").attributes("for")).toBe(wrapper.get(".typing-input").attributes("id"));
-    expect(wrapper.get("label").text()).toBe("Arrival time");
-    expect(wrapper.get(".typing-clock").attributes("aria-label")).toBe("Open time picker");
-    expect(wrapper.findAll('input[type="text"]')).toHaveLength(1);
+  it("opens the native picker when browser activation permits it and tolerates restricted activation", async () => {
+    const wrapper = create();
+    await flushPromises();
+    const input = wrapper.get(".native-control").element;
+    let opens = 0;
+    input.showPicker = () => opens++;
+    wrapper.vm.openMenu();
+    expect(opens).toBe(1);
+    expect(document.activeElement).toBe(input);
+    input.showPicker = () => { throw new DOMException("Requires user activation"); };
+    expect(() => wrapper.vm.openMenu()).not.toThrow();
   });
-  it("preserves Select time, updates the same input, and restores focus on confirmation and Escape", async () => {
-    const wrapper = create({ initValueSingle: "14:30:00" });
-    await wrapper.get(".typing-clock").trigger("click");
+  it("deduplicates input/change/blur from picker selection and rapid edits", async () => {
+    const wrapper = create();
+    await edit(wrapper, "09:34");
+    await wrapper.get(".native-control").trigger("change");
+    await wrapper.get(".native-control").trigger("blur");
+    await edit(wrapper, "09:35");
+    await wrapper.vm.commitInput();
+    expect(changes(wrapper).map(event => event.event.value)).toEqual(["09:34:00", "09:35:00"]);
+  });
+  it("defers year-digit changes until a keyboard commit", async () => {
+    const wrapper = create({ dateMode: "date" });
     await flushPromises();
-    expect(wrapper.vm.pickerOpen).toBe(true);
-    const button = Array.from(document.querySelectorAll("button")).find((node) => node.textContent === "Select time");
-    expect(button).toBeTruthy();
-    wrapper.vm.wwDatePicker.updateInternalModelValue(new Date(2026, 9, 1, 16, 45));
-    await nextTick();
-    button.click();
+    await wrapper.get(".native-control").trigger("keydown", { key: "2" });
+    await edit(wrapper, "0002-10-01");
+    await wrapper.get(".native-control").trigger("change");
+    await wrapper.get(".native-control").trigger("keydown", { key: "6" });
+    await edit(wrapper, "2026-10-01");
+    await wrapper.get(".native-control").trigger("change");
+    expect(changes(wrapper)).toHaveLength(0);
+    await wrapper.get(".native-control").trigger("keydown", { key: "Enter" });
+    expect(changes(wrapper).map(event => event.event.value)).toEqual(["2026-10-01"]);
+  });
+  it("refreshes partial segment validity when the browser has not fired input", async () => {
+    const wrapper = create();
     await flushPromises();
-    expect(wrapper.vm.variableValue).toBe("16:45:00");
-    expect(wrapper.get(".typing-input").element.value).toBe("16:45");
-    expect(document.activeElement).toBe(wrapper.get(".typing-input").element);
-    await wrapper.get(".typing-clock").trigger("click");
+    partial(wrapper);
+    await wrapper.get(".native-control").trigger("keyup", { key: "9" });
+    expect(wrapper.vm.inputValid).toBe(false);
+    expect(wrapper.vm.hasUncommittedInput).toBe(true);
+  });
+  it("does not open a missing library picker when native config changes in the editor", async () => {
+    const wrapper = create();
+    await wrapper.setProps({ content: { ...wrapper.props("content"), use24: false } });
     await flushPromises();
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    await flushPromises();
-    expect(wrapper.vm.pickerOpen).toBe(false);
-    expect(document.activeElement).toBe(wrapper.get(".typing-input").element);
+    expect(wrapper.find(".native-control").exists()).toBe(true);
   });
 });

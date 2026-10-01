@@ -1,6 +1,17 @@
 <template>
   <div class="ww-typable-date-picker">
-    <DatePicker
+    <div v-if="canType" class="native-field" :class="{ 'native-invalid': !inputValid || content.inputErrorMessage }" :style="typingStyle">
+      <label :for="inputId" class="native-label">{{ content.inputLabel || (content.dateMode === 'date' ? 'Date' : 'Time') }}<span v-if="content.required" class="native-required" aria-hidden="true"> *</span></label>
+      <input ref="nativeInput" :id="inputId" class="native-control"
+        :type="content.dateMode" :step="content.dateMode === 'time' ? 60 : 1"
+        :min="content.dateMode === 'date' ? nativeInputValue(content.minDate, 'date') || undefined : undefined"
+        :max="content.dateMode === 'date' ? nativeInputValue(content.maxDate, 'date') || undefined : undefined"
+        :lang="locale" :readonly="isReadOnly || isEditing" :required="content.required"
+        :aria-invalid="!inputValid || !!content.inputErrorMessage" :aria-describedby="!inputValid || content.inputErrorMessage ? `${inputId}-error` : undefined"
+        @pointerdown="nativeKeyboardEdit = false" @input="handleNativeInput" @change="handleNativeChange" @keydown="handleNativeKeydown" @keyup="refreshNativeInput" @blur="commitInput" />
+      <span v-if="!inputValid || content.inputErrorMessage" :id="`${inputId}-error`" class="native-error">{{ content.inputErrorMessage || nativeError }}</span>
+    </div>
+    <DatePicker v-else
       ref="wwDatePicker"
       class="ww-date-time-picker"
       :class="[
@@ -71,66 +82,17 @@
       "
       :dpStyle="{ ...themeStyle }"
       :readonly="isReadOnly || isEditing"
-      :text-input="canType"
-      :text-input-options="typingOptions"
       @open="handlePickerOpen"
       @closed="handlePickerClosed"
-      @invalid-select="handleInvalidSelection"
       :key="dpKey"
     >
-      <template #dp-input="slot">
-        <div v-if="canType" class="typing-field" :class="{ 'typing-invalid': !inputValid, 'typing-picker-open': pickerOpen }" :style="typingStyle">
-          <label :for="inputId" :class="{ 'typing-sr-only': !content.inputLabel }">{{ content.inputLabel || 'Time' }}</label>
-          <div class="typing-control" @click.stop>
-            <input
-              ref="typingInput"
-              :id="inputId"
-              class="typing-input"
-              type="text"
-              inputmode="text"
-              autocomplete="off"
-              spellcheck="false"
-              :value="inputText"
-              :placeholder="content.inputPlaceholder || 'HH:mm'"
-              :readonly="isReadOnly || isEditing"
-              :required="content.required"
-              :aria-invalid="!inputValid"
-              :aria-describedby="!inputValid ? `${inputId}-error` : undefined"
-              @input="handleTypedInput($event, slot)"
-              @keydown="handleTypingKeydown($event, slot)"
-              @blur="handleTypingBlur($event, slot)"
-            />
-            <button
-              type="button"
-              class="typing-clock"
-              :aria-label="content.clockButtonLabel || 'Open time picker'"
-              aria-haspopup="dialog"
-              :aria-expanded="pickerOpen"
-              :disabled="isReadOnly || isEditing"
-              @mousedown.prevent
-              @click.stop="toggleTypingPicker"
-            >
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M12 7v5l3 2" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-            </button>
-          </div>
-          <span v-if="!inputValid" :id="`${inputId}-error`" class="typing-sr-only">Enter a time from 00:00 to 23:59 in HH:mm format.</span>
-        </div>
-        <wwLayoutItemContext
-          v-else
-          :index="0"
-          :item="null"
-          :data="{ preview: slot.value, value: formatOutputValue(formatedValue) }"
-          is-repeat
-        >
+      <template #dp-input="{ value }">
+        <wwLayoutItemContext :index="0" :item="null" :data="{ preview: value, value: formatOutputValue(formatedValue) }" is-repeat>
           <wwLayout path="triggerZone" />
         </wwLayoutItemContext>
       </template>
       <template #action-select>
-        <button v-if="canType" type="button" class="typing-select" :style="typingStyle" @click="confirmPickerSelection">Select time</button>
-        <wwElement v-else v-bind="content.actionSelectElement" @click="selectDate" />
+        <wwElement v-bind="content.actionSelectElement" @click="selectDate" />
       </template>
       <template #left-sidebar v-if="content.enableLeftSidebar">
         <wwLayout path="leftSidebarZone" />
@@ -156,7 +118,7 @@ import DatePicker from "./vue-datepicker.js";
 import * as DateFnsLocal from "date-fns/locale";
 import "./main.css";
 import { computed, ref, inject } from "vue";
-import { parseTimeText, timeTextFromValue, parseLibraryInput } from "./timeInput.js";
+import { nativeInputValue, nativeInputCandidate } from "./nativeInput.js";
 
 export default {
   components: {
@@ -171,6 +133,7 @@ export default {
     /* wwEditor:end */
     wwElementState: { type: Object, required: true },
   },
+  data() { return { nativeKeyboardEdit: false }; },
   setup(props, { emit }) {
     const initValue = computed(() =>
       props.content.selectionMode === "single"
@@ -191,7 +154,7 @@ export default {
         defaultValue: initValue,
       });
     const { value: inputText, setValue: setInputText } = wwLib.wwVariable.useComponentVariable({
-      uid: props.uid, name: "inputText", type: "string", defaultValue: timeTextFromValue(variableValue.value), readonly: true,
+      uid: props.uid, name: "inputText", type: "string", defaultValue: nativeInputValue(variableValue.value, props.content.dateMode), readonly: true,
     });
     const { value: inputValid, setValue: setInputValid } = wwLib.wwVariable.useComponentVariable({
       uid: props.uid, name: "inputValid", type: "boolean", defaultValue: true, readonly: true,
@@ -238,26 +201,19 @@ export default {
       initValue,
       wwDatePicker,
       selectDate,
-      inputText, setInputText, inputValid, setInputValid, hasUncommittedInput, setHasUncommittedInput,
+      inputText, setInputText, inputValid, setInputValid, hasUncommittedInput, setHasUncommittedInput, nativeInputValue,
     };
   },
-  data() {
-    return { pickerOpen: false, focusAfterClose: false, inputRevision: 0, inputHandlers: null, pendingCommit: null };
-  },
-  mounted() {
-    wwLib.getFrontDocument().addEventListener("keydown", this.handlePickerEscape, true);
-  },
-  beforeUnmount() {
-    wwLib.getFrontDocument().removeEventListener("keydown", this.handlePickerEscape, true);
-  },
+  mounted() { this.resetInput(); },
   watch: {
     variableValue(newValue, oldValue) {
       // An autosave may echo an equivalent ISO/time value while a new edit is in progress.
       if (this.canType && this.hasUncommittedInput &&
-          timeTextFromValue(newValue) === timeTextFromValue(oldValue)) return;
+          nativeInputValue(newValue, this.content.dateMode) === nativeInputValue(oldValue, this.content.dateMode)) return;
       this.resetInput();
     },
     canType() { this.resetInput(); },
+    "content.dateMode"() { this.resetInput(); },
     inputValid() { this.updateInputValidity(); },
     initValue(newValue, oldValue) {
       if (JSON.stringify(newValue) === JSON.stringify(oldValue)) return;
@@ -277,16 +233,13 @@ export default {
         this.$emit("update:content:effect", { dateMode: "datetime" });
       this.setValue(this.initialValue);
     },
-    "content.dateMode"() {
-      this.setValue(this.initialValue);
-    },
     async dpKey() {
-      if (this.content.enableCalendarOnly) return;
+      if (this.canType || this.content.enableCalendarOnly) return;
       await this.$nextTick();
       this.wwDatePicker.openMenu();
     },
     "wwEditorState.isSelected"(value) {
-      if (!this.isEditing || !value || this.content.enableCalendarOnly) return;
+      if (this.canType || !this.isEditing || !value || this.content.enableCalendarOnly) return;
       this.wwDatePicker.openMenu();
     },
     /* wwEditor:end */
@@ -295,7 +248,6 @@ export default {
       handler(value) {
         if (value) {
           this.$emit("add-state", "readonly");
-          if (this.canType && this.pickerOpen) this.wwDatePicker?.closeMenu();
         } else {
           this.$emit("remove-state", "readonly");
         }
@@ -304,14 +256,11 @@ export default {
   },
   computed: {
     canType() {
-      return Boolean(this.content.allowTyping && this.content.dateMode === "time" &&
-        this.content.selectionMode === "single" && this.content.use24 &&
-        !this.content.enableSeconds && !this.content.enableCalendarOnly);
+      return Boolean(this.content.allowTyping && ["date", "time"].includes(this.content.dateMode) &&
+        this.content.selectionMode === "single" && (this.content.dateMode === "date" || !this.content.enableSeconds) && !this.content.enableCalendarOnly);
     },
-    inputId() { return `typable-time-${this.uid}`; },
-    typingOptions() {
-      return { openMenu: false, enterSubmit: true, tabSubmit: true, format: parseLibraryInput };
-    },
+    inputId() { return `typable-date-time-${this.uid}`; },
+    nativeError() { return `Enter a complete, valid ${this.content.dateMode === "date" ? "date" : "time"}.`; },
     typingStyle() {
       return {
         "--typing-font": this.content.themeFontFamily || "inherit",
@@ -320,11 +269,18 @@ export default {
         "--typing-background": this.content.themeBackgroundColor || "#FFFFFF",
         "--typing-border": this.content.themeBorderColor || "#D4DFDE",
         "--typing-radius": this.content.themeBorderRadius || "6px",
-        "--typing-focus": this.content.inputFocusColor || "#D4DFDE",
+        "--typing-focus": this.content.inputFocusColor || "#5C7574",
         "--typing-danger": this.content.themeDangerColor || "#b42318",
-        "--typing-primary": this.content.themePrimaryColor || "#253F3E",
-        "--typing-primary-text": this.content.themePrimaryTextColor || "#FFFFFF",
         "--typing-height": this.content.inputHeight || "40px",
+        "--typing-label": this.content.inputLabelColor || "#4C6D6B",
+        "--typing-label-size": this.content.inputLabelFontSize || "9px",
+        "--typing-label-background": this.content.inputLabelBackgroundColor || this.content.themeBackgroundColor || "#FFFFFF",
+        "--typing-required": this.content.inputRequiredColor || "#966844",
+        "--typing-error-background": this.content.inputErrorBackgroundColor || "#FFFAF7",
+        "--typing-shadow": this.content.inputShadow || "none",
+        "--typing-border-width": this.content.inputBorderWidth || "1px",
+        "--typing-focus-width": this.content.inputFocusWidth || "2px",
+        "--typing-focus-offset": this.content.inputFocusOffset || "2px",
       };
     },
     isEditing() {
@@ -338,7 +294,6 @@ export default {
     },
     /* https://github.com/date-fns/date-fns/blob/main/docs/unicodeTokens.md */
     previewFormat() {
-      if (this.canType) return "HH:mm";
       const format =
         this.content.format === "custom"
           ? this.content.customFormat
@@ -347,10 +302,6 @@ export default {
       return format.replace(/Y/g, "y").replace(/D/g, "d").replace(/A/g, "a");
     },
     formatedValue() {
-      if (this.canType) {
-        const text = timeTextFromValue(this.variableValue);
-        return text ? `${text}:00` : null;
-      }
       return this.formatInputValue(this.variableValue);
     },
     locale() {
@@ -457,122 +408,86 @@ export default {
   },
   methods: {
     getInputState() {
+      const candidate = this.canType && this.$refs.nativeInput && !this.isReadOnly && !this.isEditing
+        ? nativeInputCandidate(this.$refs.nativeInput, this.content.dateMode, this.content) : null;
       return {
-        valid: !this.canType || this.inputValid,
-        text: this.canType ? this.inputText : timeTextFromValue(this.variableValue),
+        valid: candidate ? candidate.valid : !this.canType || this.inputValid,
+        text: candidate ? candidate.text : this.canType ? this.inputText : nativeInputValue(this.variableValue, this.content.dateMode),
         value: this.variableValue,
-        hasUncommittedInput: this.canType && this.hasUncommittedInput,
+        hasUncommittedInput: Boolean(this.canType && (this.hasUncommittedInput || candidate?.incomplete || (candidate && candidate.text !== nativeInputValue(this.variableValue, this.content.dateMode)))),
+        incomplete: candidate?.incomplete || false,
       };
     },
     resetInput() {
-      this.inputRevision++;
-      this.setInputText(timeTextFromValue(this.variableValue));
+      this.nativeKeyboardEdit = false;
+      this.setInputText(nativeInputValue(this.variableValue, this.content.dateMode));
       this.setInputValid(true);
       this.setHasUncommittedInput(false);
-      this.$nextTick(() => this.updateInputValidity());
+      this.$nextTick(() => {
+        const input = this.$refs.nativeInput;
+        if (input) {
+          // No reactive value binding: browsers keep partially edited native
+          // segments outside .value, and rerenders must not erase those edits.
+          if (input.value !== this.inputText || input.validity.badInput) input.value = this.inputText;
+          this.setInputValid(nativeInputCandidate(input, this.content.dateMode, this.content).valid);
+        }
+        this.updateInputValidity();
+      });
     },
     updateInputValidity() {
-      this.$refs.typingInput?.setCustomValidity(this.inputValid ? "" : "Enter a time from 00:00 to 23:59 in HH:mm format.");
+      this.$refs.nativeInput?.setCustomValidity(this.inputValid ? "" : this.nativeError);
       this.$emit(this.inputValid ? "remove-state" : "add-state", "invalid");
     },
-    handleTypedInput(event, handlers) {
+    handleNativeInput(event) {
+      if (event?.inputType === "insertFromPaste") this.nativeKeyboardEdit = true;
       if (this.isReadOnly || this.isEditing) return;
-      this.inputHandlers = handlers;
-      this.inputRevision++;
-      this.setInputText(event.target.value);
-      this.setInputValid(parseTimeText(event.target.value).valid);
+      const candidate = nativeInputCandidate(this.$refs.nativeInput, this.content.dateMode, this.content);
+      this.setInputText(candidate.text);
+      this.setInputValid(candidate.valid);
       this.setHasUncommittedInput(true);
-      // Strict parser prevents the library from interpreting partial/invalid text.
-      handlers.onInput(event);
       this.updateInputValidity();
       this.$emit("trigger-event", { name: "input", event: this.getInputState() });
     },
-    async commitInput(reason = "enter", handlers = this.inputHandlers) {
-      if (!this.canType || this.isReadOnly || this.isEditing || !this.hasUncommittedInput) return this.getInputState();
-      const parsed = parseTimeText(this.inputText);
-      this.setInputValid(parsed.valid);
-      this.updateInputValidity();
-      if (!parsed.valid || !handlers) return this.getInputState();
-      if (this.pendingCommit?.revision === this.inputRevision) return this.pendingCommit.promise;
-      const revision = this.inputRevision;
-      const promise = (async () => {
-        // Reparse on each commit: library confirmation consumes its parsed candidate.
-        handlers.onInput({ target: { value: this.inputText } });
-        await this.$nextTick();
-        if (revision !== this.inputRevision) return this.getInputState();
-        if (parsed.empty) handlers.onClear();
-        else if (reason === "tab") handlers.onTab();
-        else handlers.onEnter();
-        await this.$nextTick();
-        return this.getInputState();
-      })();
-      this.pendingCommit = { revision, promise };
-      try { return await promise; }
-      finally { if (this.pendingCommit?.revision === revision) this.pendingCommit = null; }
+    handleNativeChange() {
+      // Native date controls may fire change for each year digit. Keyboard edits
+      // wait for Enter/Tab/blur; picker confirmations commit immediately.
+      if (!this.nativeKeyboardEdit) return this.commitInput();
     },
-    handleTypingKeydown(event, handlers) {
+    refreshNativeInput() {
+      if (this.isReadOnly || this.isEditing) return;
+      const candidate = nativeInputCandidate(this.$refs.nativeInput, this.content.dateMode, this.content);
+      // Some browsers do not emit input while only incomplete segments change:
+      // .value stays empty, but badInput changes. Navigation alone is not an edit.
+      if (candidate.text !== this.inputText || candidate.valid !== this.inputValid ||
+          (candidate.incomplete && !this.hasUncommittedInput)) this.handleNativeInput();
+    },
+    async commitInput() {
+      if (!this.canType || this.isReadOnly || this.isEditing || !this.$refs.nativeInput) return this.getInputState();
+      const candidate = nativeInputCandidate(this.$refs.nativeInput, this.content.dateMode, this.content);
+      this.setInputValid(candidate.valid);
+      this.updateInputValidity();
+      if (!candidate.valid) {
+        this.setHasUncommittedInput(true);
+        return this.getInputState();
+      }
+      if (this.getInputState().hasUncommittedInput) this.handleSelection(candidate.value);
+      return this.getInputState();
+    },
+    handleNativeKeydown(event) {
       if (event.key === "Enter") {
         event.preventDefault(); event.stopPropagation();
-        this.commitInput("enter", handlers);
-      } else if (event.key === "Tab") {
-        this.commitInput("tab", handlers);
-      } else if (event.key === "Escape" && this.pickerOpen) {
-        event.preventDefault(); event.stopPropagation();
-        this.focusAfterClose = true;
-        this.wwDatePicker.closeMenu();
-      }
+        this.commitInput();
+      } else if (event.key === "Tab") this.commitInput();
+      else if (event.altKey && event.key === "ArrowDown") this.nativeKeyboardEdit = false;
+      else if (/^[0-9ap]$/i.test(event.key) || ["Backspace", "Delete", "ArrowUp", "ArrowDown"].includes(event.key)) this.nativeKeyboardEdit = true;
+      // Escape, arrows, segment selection, and separators remain native.
     },
-    handlePickerEscape(event) {
-      if (!this.canType || !this.pickerOpen || event.key !== "Escape") return;
-      event.preventDefault(); event.stopPropagation();
-      this.focusAfterClose = true;
-      this.wwDatePicker.closeMenu();
-    },
-    handleTypingBlur(event, handlers) {
-      if (this.pickerOpen || this.$el.contains(event.relatedTarget)) return;
-      this.commitInput("blur", handlers);
-    },
-    toggleTypingPicker() {
-      if (this.isReadOnly || this.isEditing) return;
-      if (this.pickerOpen) {
-        this.focusAfterClose = true;
-        this.wwDatePicker.closeMenu();
-      } else this.wwDatePicker.openMenu();
-    },
-    handlePickerOpen() {
-      this.pickerOpen = true;
-      if (this.canType) {
-        // Opening reparses the committed model in the library. Seed its panel
-        // with valid pending text so switching paths does not lose that edit.
-        if (this.hasUncommittedInput) {
-          const candidate = parseLibraryInput(this.inputText);
-          if (candidate) this.wwDatePicker.updateInternalModelValue(candidate);
-        }
-        this.$emit("trigger-event", { name: "open", event: {} });
-      }
-    },
-    handlePickerClosed() {
-      this.pickerOpen = false;
-      if (!this.canType) return;
-      if (this.focusAfterClose) this.$nextTick(() => this.$refs.typingInput?.focus());
-      else if (this.hasUncommittedInput) this.commitInput("blur");
-      this.focusAfterClose = false;
-      this.$emit("trigger-event", { name: "close", event: {} });
-    },
-    confirmPickerSelection() {
-      this.focusAfterClose = this.canType;
-      this.selectDate();
-    },
-    handleInvalidSelection() {
-      if (!this.canType) return;
-      this.setInputValid(false);
-      this.updateInputValidity();
-      this.focusAfterClose = false;
-    },
+    handlePickerOpen() { this.$emit("trigger-event", { name: "open", event: {} }); },
+    handlePickerClosed() { this.$emit("trigger-event", { name: "close", event: {} }); },
     handleSelection(value) {
       if (this.canType) {
-        this.inputRevision++;
-        this.setInputText(timeTextFromValue(value));
+        this.nativeKeyboardEdit = false;
+        this.setInputText(nativeInputValue(value, this.content.dateMode));
         this.setInputValid(true);
         this.setHasUncommittedInput(false);
         this.updateInputValidity();
@@ -628,9 +543,15 @@ export default {
       });
     },
     openMenu() {
-      this.wwDatePicker.openMenu();
+      if (!this.canType) { this.wwDatePicker.openMenu(); return; }
+      if (this.isReadOnly || this.isEditing) return;
+      this.nativeKeyboardEdit = false;
+      this.$refs.nativeInput?.focus();
+      try { this.$refs.nativeInput?.showPicker?.(); }
+      catch { /* Native indicator remains usable when showPicker is restricted. */ }
     },
     closeMenu() {
+      if (this.canType) { this.$refs.nativeInput?.blur(); return; }
       this.$nextTick(() => {
         this.wwDatePicker.closeMenu();
       });
@@ -659,20 +580,16 @@ export default {
 </style>
 
 <style scoped>
-.typing-field { width: 100%; font-family: var(--typing-font); font-size: var(--typing-size); color: var(--typing-text); }
-.typing-field label:not(.typing-sr-only) { display: block; margin-bottom: 6px; }
-.typing-control { display: flex; align-items: stretch; width: 100%; min-height: var(--typing-height); box-sizing: border-box; border: 1px solid var(--typing-border); border-radius: var(--typing-radius); background: var(--typing-background); }
-.typing-control:focus-within, .typing-picker-open .typing-control { box-shadow: inset 0 0 0 3px var(--typing-focus); }
-.typing-invalid .typing-control { border-color: var(--typing-danger); }
-.typing-input { flex: 1; min-width: 0; width: 100%; padding: 8px 12px; border: 0; outline: none; border-radius: inherit; background: transparent; font: inherit; color: inherit; }
-.typing-input::placeholder { color: #8FA9A8; opacity: 1; }
-.typing-clock { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 40px; border: 0; border-radius: inherit; background: transparent; color: inherit; cursor: pointer; }
-.typing-clock:focus-visible { outline: 2px solid currentColor; outline-offset: -5px; }
-.typing-clock:disabled { cursor: default; opacity: .5; }
-.typing-select { min-height: 32px; padding: 6px 12px; border: 0; border-radius: var(--typing-radius); background: var(--typing-primary); color: var(--typing-primary-text); font-family: var(--typing-font); font-size: var(--typing-size); cursor: pointer; }
-.typing-select:focus-visible { outline: 2px solid var(--typing-primary); outline-offset: 2px; }
-.typing-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-@media (forced-colors: active) { .typing-control:focus-within { outline: 2px solid Highlight; } .typing-invalid .typing-control { border-color: Mark; } }
+.native-field { position: relative; width: 100%; padding-top: 5px; font-family: var(--typing-font); font-size: var(--typing-size); color: var(--typing-text); }
+.native-label { position: absolute; z-index: 1; top: -1px; left: 7px; padding: 0 4px; max-width: calc(100% - 18px); background: var(--typing-label-background); color: var(--typing-label); font-size: var(--typing-label-size); line-height: 12px; }
+.native-required { color: var(--typing-required); }
+.native-control { display: block; width: 100%; min-width: 0; min-height: var(--typing-height); box-sizing: border-box; padding: 10px 11px 8px; border: var(--typing-border-width) solid var(--typing-border); border-radius: var(--typing-radius); background: var(--typing-background); color: var(--typing-text); box-shadow: var(--typing-shadow); font: inherit; line-height: 1.4; color-scheme: light; }
+.native-control:focus-visible { outline: var(--typing-focus-width) solid var(--typing-focus); outline-offset: var(--typing-focus-offset); }
+.native-control::-webkit-calendar-picker-indicator { opacity: 1; cursor: pointer; }
+.native-control:read-only::-webkit-calendar-picker-indicator { cursor: default; }
+.native-invalid .native-control { border-color: var(--typing-danger); background: var(--typing-error-background); }
+.native-error { display: block; margin-top: 6px; color: var(--typing-danger); font-size: var(--typing-label-size); line-height: 1.5; }
+@media (forced-colors: active) { .native-control:focus-visible { outline: 2px solid Highlight; } .native-invalid .native-control { border-color: Mark; } }
 </style>
 
 <style lang="scss" scoped>

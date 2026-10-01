@@ -2,7 +2,7 @@
 
 ## Delivery boundary
 
-This repository delivers the custom WeWeb component. No CIT editor elements, workflows, Xano request actions, or published application have been changed. Component tests and a standalone browser replay do not establish authenticated CIT acceptance.
+This repository delivers the custom WeWeb component. The Forms test instance was enabled for the earlier typing version; the four production form controls, existing checkpoint workflows, Xano request actions, and published application were not replaced. v0.2.0 delivers native controls and configurable styling through GitHub. Component tests and the standalone browser replay do not establish authenticated CIT acceptance.
 
 ## Recorded baseline
 
@@ -25,15 +25,31 @@ A private local snapshot of all four controls and their descendants was saved fo
 
 ## Integration sequence
 
-1. Import this component into unpublished WeWeb. Pilot Incident Arrival time with Single / Time / 24-hour / no seconds / Allow typing enabled. Set the label, dimensions, typography, and focus color to match the surrounding CIT fields.
+1. Import this component into unpublished WeWeb. Build/select source version v0.2.0 in the dashboard and refresh the editor. Pilot Incident Arrival time with Single / Time / no seconds / Allow typing enabled. Native display follows the browser locale; the committed time still uses HH:mm:00. Set the label, dimensions, typography, and focus color to match the surrounding CIT fields.
 2. Preserve the original initial-value formula and committed `change` checkpoint workflow. Do not checkpoint the raw `input` event.
-3. Add the awaited **Commit typed input** and validation guard before Save/Submit's full-field synchronization. Block invalid nonempty text instead of consuming the previous committed time. Continue allowing incomplete draft date/time pairs under the existing form contract.
+3. Add the awaited **Commit typed input** and validation guard before Save/Submit's full-field synchronization. Block incomplete native segments (`valid: false`, including empty serialized text with `incomplete: true`) instead of consuming the previous committed time. Continue allowing incomplete draft date/time pairs under the existing form contract.
 4. If replacement changes the element ID, update all direct references: hydration, reset, checkpoint mappings, Save/Submit synchronization, date/time recombination, duration/ordering checks, prefill, Cancel, Discard, and post-submit reset.
 5. Verify Arrival time before applying the component to the other three controls. Keep all existing queue serialization and date/time recombination behavior.
+
+Native field `inputText` contains the serialized value, not visible partial segments. Do not treat empty `inputText` as clearing without the fresh commit result. The original 24-hour/custom-format configuration remains relevant when Allow typing is off; native display may use AM/PM while native value is always 24-hour. Bind `inputErrorMessage` for explanatory pair/order errors and set Danger color/Error background to the host palette.
 
 For rapid edits, await the component commit result and stop if it is invalid or still pending. Continue CIT's existing checkpoint queue and its established synchronization order; do not introduce a parallel persistence path. Keep overnight calculations, transient reversed-order autosave behavior, and final ordering validation in the host form.
 
 Existing Xano request actions remain under Jared's ownership. Publication is a separate step.
+
+## Host pair/draft acceptance contract
+
+Arrival and Clear each keep a separate date/time pair. Exactly one complete value displays **“Choose both date and time to save this pair.”** Keep it in the UI/draft without producing a timestamp. Blank or half-complete pairs remain allowed in existing draft flows; partially edited native fields must be completed or cleared before synchronization. Final Submit still checks requiredness and completeness.
+
+Valid complete pairs combine using the browser's local timezone and convert to UTC ISO through CIT's existing queue. Time on scene stays `—` until both timestamps are complete, then shows a duration. Clear may equal or follow Arrival. Earlier Clear displays **“Clear must follow Arrival”** and does not autosave its timestamp. Overnight calls require the next-day Clear date. Pair/ordering errors use the configurable warm brown border, pale peach background, and associated message.
+
+The component supplies single-field validation and host error rendering. `demo/pairContract.js` and the Arrival/Clear harness demonstrate these rules with six pair tests and an actual native browser replay, without any backend requests. Continue using CIT's established date/time recombination and serialized queue; this demo does not install a second persistence path.
+
+## Current unpublished editor evidence
+
+Named environment: **CIT Project**, project `831c9c16-b71b-4d6f-9bbd-38e457a8118b`, Forms page `11217cf7-ef8b-4cec-b0f5-e276f3887bcc`. Test element `0130ec08-1ba0-4542-b357-a456ab1f2780` was read back with Time, Single, Allow typing on, seconds off, custom HH:mm format, and label Test time. The GitHub component source is external and must be refreshed through WeWeb's source-version workflow. This configuration readback does not verify native v0.2.0 runtime behavior.
+
+v0.2.0 local evidence: 78 tests, a passing WeWeb build, and 30 headed Chromium assertions; see [verification.md](verification.md). The previous v0.1.0 source and private original-instance snapshot remain available for rollback. Keep original element IDs/configuration until authenticated acceptance passes.
 
 ## Acceptance evidence still required
 

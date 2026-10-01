@@ -36,6 +36,11 @@ export default {
           "themeTimeFontSize",
           "inputHeight",
           "inputFocusColor",
+          "inputBorderWidth",
+          "inputFocusWidth",
+          "inputFocusOffset",
+          "inputLabelFontSize",
+          "inputShadow",
   
           "advancedStyles",
           "themePreviewFontSize",
@@ -71,6 +76,10 @@ export default {
           "themeIconColor",
           "themeDangerColor",
           "themeHighlightColor",
+          "inputLabelColor",
+          "inputLabelBackgroundColor",
+          "inputRequiredColor",
+          "inputErrorBackgroundColor",
         ],
       },
     ],
@@ -103,7 +112,7 @@ export default {
       {
         label: "Time",
         isCollapsible: true,
-        properties: ["dateMode", "timezone", "use24", "enableSeconds", "allowTyping", "inputLabel", "inputPlaceholder", "clockButtonLabel"],
+        properties: ["dateMode", "timezone", "use24", "enableSeconds", "allowTyping", "inputLabel", "inputErrorMessage"],
       },
       {
         label: "Dates",
@@ -139,7 +148,7 @@ export default {
     ],
   },
   triggerEvents: [
-    { name: "input", label: { en: "On text input" }, event: { text: "14:30", valid: true, value: null, hasUncommittedInput: true } },
+    { name: "input", label: { en: "On input" }, event: { text: "14:30", valid: true, value: null, hasUncommittedInput: true, incomplete: false } },
     { name: "open", label: { en: "On picker open" }, event: {} },
     { name: "close", label: { en: "On picker close" }, event: {} },
     {
@@ -178,28 +187,70 @@ export default {
   properties: {
     allowTyping: {
       label: { en: "Allow typing" }, type: "OnOff", section: "settings", defaultValue: false, bindable: true,
-      hidden: (content) => content.dateMode !== "time" || content.selectionMode !== "single" || !content.use24 || content.enableSeconds || content.enableCalendarOnly,
-      propertyHelp: { tooltip: "Strict HH:mm typing for single-value, 24-hour time without seconds. Commit on Enter, Tab, or leaving the field. Save workflows must check inputValid and run Commit typed input before reading value." },
+      hidden: (content) => !["date", "time"].includes(content.dateMode) || content.selectionMode !== "single" || (content.dateMode === "time" && content.enableSeconds) || content.enableCalendarOnly,
+      propertyHelp: { tooltip: "Native date/time segments, separators, and picker. Single values, time without seconds. Browser locale controls display; time selections retain HH:mm:00. Save must await Commit typed input and check its validation result." },
     },
     inputLabel: {
       label: { en: "Input label" }, type: "Text", section: "settings", defaultValue: "", bindable: true,
       hidden: (content) => !content.allowTyping,
-      propertyHelp: { tooltip: "Visible associated label. When empty, an associated Time label remains available to screen readers." },
+      propertyHelp: { tooltip: "Persistent label across the field border, including when empty. Falls back to Date or Time." },
     },
     inputPlaceholder: {
       label: { en: "Input placeholder" }, type: "Text", section: "settings", defaultValue: "HH:mm", bindable: true,
-      hidden: (content) => !content.allowTyping,
+      hidden: true,
     },
     clockButtonLabel: {
       label: { en: "Clock button accessible name" }, type: "Text", section: "settings", defaultValue: "Open time picker", bindable: true,
-      hidden: (content) => !content.allowTyping,
+      hidden: true,
     },
     inputHeight: {
       ...generateThemeSizingConfig("Input minimum height", 40, 200, false),
       hidden: (content) => !content.allowTyping,
     },
     inputFocusColor: {
-      ...generateThemeColorConfig("Input focus color", "#D4DFDE", false),
+      ...generateThemeColorConfig("Input focus color", "#5C7574", false),
+      hidden: (content) => !content.allowTyping,
+    },
+    inputErrorMessage: {
+      label: { en: "Field error message" }, type: "Text", section: "settings", defaultValue: "", bindable: true,
+      hidden: (content) => !content.allowTyping,
+      propertyHelp: { tooltip: "Bind host pair/ordering errors here. Sets the error appearance and associated description. Host workflows must also stop autosave/Submit for these errors." },
+    },
+    inputLabelColor: {
+      ...generateThemeColorConfig("Label color", "#4C6D6B", false),
+      hidden: (content) => !content.allowTyping,
+    },
+    inputLabelBackgroundColor: {
+      ...generateThemeColorConfig("Label background", null, false),
+      hidden: (content) => !content.allowTyping,
+    },
+    inputRequiredColor: {
+      ...generateThemeColorConfig("Required marker color", "#966844", false),
+      hidden: (content) => !content.allowTyping,
+    },
+    inputErrorBackgroundColor: {
+      ...generateThemeColorConfig("Error background", "#FFFAF7", false),
+      hidden: (content) => !content.allowTyping,
+    },
+    inputBorderWidth: {
+      ...generateThemeSizingConfig("Input border width", 1, 10, false),
+      hidden: (content) => !content.allowTyping,
+    },
+    inputFocusWidth: {
+      ...generateThemeSizingConfig("Focus outline width", 2, 10, false),
+      hidden: (content) => !content.allowTyping,
+    },
+    inputFocusOffset: {
+      ...generateThemeSizingConfig("Focus outline offset", 2, 20, false),
+      hidden: (content) => !content.allowTyping,
+    },
+    inputLabelFontSize: {
+      ...generateThemeSizingConfig("Label font size", 9, 40, false),
+      hidden: (content) => !content.allowTyping,
+    },
+    inputShadow: {
+      label: { en: "Input shadow (CSS)" }, type: "Text", section: "style",
+      defaultValue: "0 1px 2px #253F3E0B", bindable: true, responsive: true, states: true, classes: true,
       hidden: (content) => !content.allowTyping,
     },
     initValueSingle: {
@@ -432,6 +483,7 @@ export default {
     },
     use24: {
       label: { en: "24h mode", fr: "Mode 24h" },
+      propertyHelp: { tooltip: "Applies to the library picker. Native typing uses the browser/OS display format; the native value is always 24-hour." },
       type: "OnOff",
       section: "settings",
       defaultValue: false,
